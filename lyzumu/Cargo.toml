@@ -1,0 +1,17 @@
+[package]
+name = "lyzumu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+env_logger = "0.11.3"
+log = "0.4.22"
+lyzumu_audio = { version = "0.1.0", path = "../lyzumu_audio" }
+lyzumu_chart = { version = "0.1.0", path = "../lyzumu_chart" }
+
+# XXX chore: bump to latest.
+[dependencies.winit]
+version = "0.29.7"
+default-features = false
+features = ["x11"]

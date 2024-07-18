@@ -1,0 +1,13 @@
+[package]
+name = "lyzumu_audio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+log = "0.4.22"
+
+[dependencies.kira]
+version = "0.9.3"
+default-features = false
+features = ["cpal", "symphonia", "ogg"]

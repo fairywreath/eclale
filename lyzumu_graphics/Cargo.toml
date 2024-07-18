@@ -1,0 +1,16 @@
+[package]
+name = "lyzumu_graphics"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+ash = "0.38.0"
+ash-window = "0.13.0"
+log = "0.4.22"
+raw-window-handle = "0.6.2"
+
+[dependencies.gpu-allocator]
+version = "0.27.0"
+default-features = false
+features = ["vulkan"]

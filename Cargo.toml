@@ -1,0 +1,3 @@
+[workspace]
+members = ["lyzumu", "lyzumu_audio", "lyzumu_chart", "lyzumu_graphics"]
+resolver = "2"
