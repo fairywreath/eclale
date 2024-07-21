@@ -4,15 +4,11 @@ use anyhow::Result;
 use ash::vk;
 use gpu_allocator::MemoryLocation;
 
-use crate::{
-    resource::{BufferDescriptor, Image},
-    QUEUE_FAMILY_INDEX_GRAPHICS,
-};
-
 use super::{
     device::Device,
     resource::{Buffer, DescriptorSet, Pipeline},
-    DeviceShared,
+    resource::{BufferDescriptor, Image},
+    DeviceShared, QUEUE_FAMILY_INDEX_GRAPHICS,
 };
 
 /// Structure that wraps around the raw vulkan CommandPool object.

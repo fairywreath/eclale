@@ -12,7 +12,7 @@ use gpu_allocator::{
     MemoryLocation,
 };
 
-use crate::types::{
+use super::types::{
     DescriptorSetLayoutBinding, PipelineDepthStencilState, PipelineRasterizationState,
 };
 

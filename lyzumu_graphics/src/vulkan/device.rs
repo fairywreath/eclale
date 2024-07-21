@@ -5,7 +5,7 @@ use ash::vk::{self};
 use parking_lot::{Mutex, RwLock};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
-use crate::resource::{PendingDestructionImage, PendingDestructionSampler};
+use super::resource::{PendingDestructionImage, PendingDestructionSampler};
 
 use super::{
     command::{CommandBuffer, CommandBufferManager},
@@ -69,7 +69,10 @@ impl Device {
         let instance = Instance::new(display_handle)?;
         let surface = Surface::new(&instance, window_handle, display_handle)?;
         let shared = Arc::new(DeviceShared::new(instance, surface)?);
-        let swapchain = Mutex::new(Swapchain::new(shared.clone(), vk::PresentModeKHR::FIFO)?);
+        let swapchain = Mutex::new(Swapchain::new(
+            shared.clone(),
+            vk::PresentModeKHR::IMMEDIATE,
+        )?);
 
         // Always get index at queue 0 since only 1 queue is used per family.
         let queue_graphics_present_family_index =

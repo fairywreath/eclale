@@ -9,9 +9,11 @@ env_logger = "0.11.3"
 log = "0.4.22"
 lyzumu_audio = { version = "0.1.0", path = "../lyzumu_audio" }
 lyzumu_chart = { version = "0.1.0", path = "../lyzumu_chart" }
+lyzumu_graphics = { version = "0.1.0", path = "../lyzumu_graphics" }
+nalgebra = "0.33.0"
 
 # XXX chore: bump to latest.
 [dependencies.winit]
 version = "0.29.7"
 default-features = false
-features = ["x11"]
+features = ["x11", "rwh_06"]

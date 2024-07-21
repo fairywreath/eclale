@@ -53,8 +53,8 @@ impl Instance {
 
         let instance_info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
-            .enabled_extension_names(&extension_names)
-            .enabled_layer_names(&layer_names);
+            // .enabled_layer_names(&layer_names)
+            .enabled_extension_names(&extension_names);
 
         let raw = unsafe { entry.create_instance(&instance_info, None)? };
 
@@ -602,7 +602,7 @@ impl Swapchain {
     fn recreate(&mut self) -> Result<()> {
         self.destroy();
         log::debug!("Recreating swapchain...");
-        let new_swapchain = Self::new(self.device.clone(), vk::PresentModeKHR::FIFO)?;
+        let new_swapchain = Self::new(self.device.clone(), vk::PresentModeKHR::IMMEDIATE)?;
         *self = new_swapchain;
         log::debug!("Done recreating swapchain.");
         Ok(())

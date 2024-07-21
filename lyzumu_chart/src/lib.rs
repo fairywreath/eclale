@@ -21,7 +21,7 @@ pub enum TimingPointBeatLength {
 }
 
 pub struct HitObject {
-    pub position: (u32, u32),
+    pub position: (f32, f32),
 
     /// Time in milliseconds from the start of the audio.
     pub time: f32,

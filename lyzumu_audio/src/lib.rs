@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use kira::{
     manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
-    sound::static_sound::{StaticSoundData, StaticSoundSettings},
+    sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings},
 };
 
 pub struct AudioSystem {
@@ -28,11 +28,11 @@ impl AudioSystem {
         Ok(index)
     }
 
-    pub fn play_static_sound(&mut self, sound_index: usize) -> Result<()> {
-        let _sound_handle = self
+    pub fn play_static_sound(&mut self, sound_index: usize) -> Result<StaticSoundHandle> {
+        let sound_handle = self
             .audio_manager
             .play(self.static_sounds[sound_index].clone())?;
 
-        Ok(())
+        Ok(sound_handle)
     }
 }
