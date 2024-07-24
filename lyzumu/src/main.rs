@@ -6,7 +6,7 @@ use lyzumu_graphics::{
     renderer::track::{TrackRenderer, TrackUniformBufferData},
     scene::{SceneHitObject, TrackScene},
 };
-use nalgebra::{Isometry3, Matrix4, Perspective3, Point3, Vector3, Vector4};
+use nalgebra::{Isometry3, Matrix4, Orthographic3, Perspective3, Point3, Vector3, Vector4};
 use winit::{
     dpi,
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -18,7 +18,7 @@ use winit::{
 };
 
 use lyzumu_audio::AudioSystem;
-use lyzumu_chart::parse::osu_mania::OsuManiaParser;
+use lyzumu_chart::parse::{ksh::KshParser, osu::OsuManiaParser};
 
 fn main() -> Result<()> {
     let env = env_logger::Env::default()
@@ -35,6 +35,10 @@ fn main() -> Result<()> {
     // Parse chart file.
     let chart_file_path = &args[1];
     let chart_parent_dir = Path::new(chart_file_path).parent().unwrap_or(Path::new(""));
+
+    // Test KSH parsing.
+    let chart = KshParser::parse_file(chart_file_path)?;
+
     let chart = OsuManiaParser::parse_file(chart_file_path)?;
 
     log::info!("Chart number of hit objects: {}", chart.hit_objects.len());
@@ -60,9 +64,10 @@ fn main() -> Result<()> {
     )?;
     let screen_dimensions = track_renderer.swapchain_extent();
 
-    let runner_speed = 10.0 as f32;
+    let runner_speed = 17.0 as f32;
 
     let mut renderer_hit_objects = Vec::new();
+    // let num_lanes = chart.info.mode.
     let num_lanes = 4.0;
     let lane_width = 2.0 / num_lanes;
     let lane_x_offset = (lane_width / 2.0) - 1.0;
@@ -92,8 +97,8 @@ fn main() -> Result<()> {
     let mut current_runner_position = 0.0;
 
     // XXX TODO: Need to find good parameters for this
-    let eye = Point3::new(0.0, -1.54, 0.2);
-    let target = Point3::new(0.0, 0.7, 3.0);
+    let eye = Point3::new(0.0, -1.0, -5.2);
+    let target = Point3::new(0.0, 2.5, 1.0);
 
     let view = Isometry3::look_at_rh(&eye, &target, &Vector3::y());
     let projection = Perspective3::new(
@@ -126,15 +131,15 @@ fn main() -> Result<()> {
                     let dt = now - last_render_time;
                     last_render_time = now;
 
-                    // println!("DT: {}", dt.as_secs_f32());
+                    println!("DT: {}", dt.as_secs_f32());
                     let current_audio_position = sound_handle.position() as f32;
                     if last_audio_position != current_audio_position {
-                        println!(
-                            "last vs current sound position  {} {} {}",
-                            last_audio_position,
-                            current_audio_position,
-                            current_audio_position - last_audio_position
-                        );
+                        // println!(
+                        //     "last vs current sound position  {} {} {}",
+                        //     last_audio_position,
+                        //     current_audio_position,
+                        //     current_audio_position - last_audio_position
+                        // );
                         last_audio_position = current_audio_position;
                     }
 

@@ -10,4 +10,4 @@ log = "0.4.22"
 [dependencies.kira]
 version = "0.9.3"
 default-features = false
-features = ["cpal", "symphonia", "ogg"]
+features = ["cpal", "symphonia", "ogg", "mp3", "wav"]

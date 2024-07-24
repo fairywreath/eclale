@@ -69,10 +69,7 @@ impl Device {
         let instance = Instance::new(display_handle)?;
         let surface = Surface::new(&instance, window_handle, display_handle)?;
         let shared = Arc::new(DeviceShared::new(instance, surface)?);
-        let swapchain = Mutex::new(Swapchain::new(
-            shared.clone(),
-            vk::PresentModeKHR::IMMEDIATE,
-        )?);
+        let swapchain = Mutex::new(Swapchain::new(shared.clone(), vk::PresentModeKHR::FIFO)?);
 
         // Always get index at queue 0 since only 1 queue is used per family.
         let queue_graphics_present_family_index =

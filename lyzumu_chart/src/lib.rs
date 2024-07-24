@@ -1,7 +1,11 @@
 pub mod parse;
+mod types;
 
 ///
 /// Chart format is based on osu!mania's beatmap file format.
+/// This is a "low-level"/"raw" chart format, in a sense that every timing/beat is specified by
+/// a raw timed offset(eg. milliseconds) from the beginning of the song instead of higher-level
+/// constructs such as beats and measures.
 ///
 
 /// Represents time signatures.
