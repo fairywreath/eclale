@@ -1,8 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::Enumerate};
 
 use anyhow::Result;
 
-use crate::{types::TimeSignature, Chart};
+use crate::{
+    util::{TimeSignature, TimeSignaturesOffsets},
+    Chart, ChartInfo, ChartMode, HitObject, HitObjectParameters, TimingPoint,
+    TimingPointBeatLength,
+};
 
 use super::read_lines;
 
@@ -67,16 +71,39 @@ struct KshLaneSpin {
     length: u32,
 }
 
+const NUM_BT_LANES: usize = 4;
+const NUM_FX_LANES: usize = 2;
+const NUM_LASER_LANES: usize = 2;
+
 #[derive(Default)]
 struct KshNoteLine {
-    bt_lanes: [KshNoteType; 4],
-    fx_lanes: [KshNoteType; 2],
-    laser_lanes: [KshLaserInstance; 2],
+    bt_lanes: [KshNoteType; NUM_BT_LANES],
+    fx_lanes: [KshNoteType; NUM_FX_LANES],
+    laser_lanes: [KshLaserInstance; NUM_LASER_LANES],
     lane_spin: Option<KshSpinType>,
 }
 
+fn bt_notes_to_hit_objects(bt_notes: &[KshNoteType; 4], time: f32) -> Vec<HitObject> {
+    let mut hit_objects = Vec::new();
+    for i in 0..NUM_BT_LANES {
+        match bt_notes[i] {
+            // XXX: Only handle chips for now.
+            KshNoteType::Chip => {
+                hit_objects.push(HitObject {
+                    position: (i as _, 0.0),
+                    time,
+                    object_parameters: HitObjectParameters::Note,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    hit_objects
+}
+
 #[derive(Default)]
-enum KshChartLine {
+enum KshLine {
     #[default]
     Bar,
     Note(KshNoteLine),
@@ -89,7 +116,7 @@ struct KshHeader {
     audio_filenames: Vec<String>,
     /// Offset to start of the audio in milliseconds.
     audio_offset: u32,
-
+    bpm: u32,
     bg_filenames: Vec<String>,
     video_filename: String,
     filter_gain: u32,
@@ -100,16 +127,7 @@ struct KshHeader {
 #[derive(Default)]
 struct KshChartData {
     header: KshHeader,
-    body: Vec<KshChartLine>,
-}
-
-/// Pre-processed chart data into more understandable format.
-struct KshProcessedChartData {
-    /// Must be ordered by measure count.
-    time_signatures: Vec<(usize, TimeSignature)>,
-    /// Vector size of each bar determines subdivision of the individual notes.
-    bars: Vec<Vec<KshNoteLine>>,
-    // XXX: State on each bar, etc.
+    body: Vec<KshLine>,
 }
 
 const KSH_COMMENT_STR: &str = "//";
@@ -125,9 +143,105 @@ pub struct KshParser;
 
 impl KshParser {
     pub fn parse_file(file_name: &str) -> Result<Chart> {
-        let raw_chart_data = Self::read_to_ksh_data(file_name)?;
+        Self::parse_ksh_chart_data(Self::read_to_ksh_data(file_name)?)
+    }
 
-        todo!()
+    fn parse_ksh_chart_data(ksh_data: KshChartData) -> Result<Chart> {
+        let mut current_measure = 0;
+
+        // Separate all bars and time signatures.
+        let mut bars = Vec::new();
+        let mut time_signatures = Vec::new();
+        for chart_line in ksh_data.body {
+            match chart_line {
+                KshLine::Bar => {
+                    current_measure = bars.len();
+                    bars.push(Vec::new());
+                }
+                KshLine::Option((key, value)) => {
+                    if key == "beat" {
+                        let beat_values = value.split("/").collect::<Vec<_>>();
+                        let num_beats = beat_values[0].parse()?;
+                        let note_value = beat_values[1].parse()?;
+
+                        time_signatures.push((
+                            current_measure,
+                            TimeSignature {
+                                num_beats,
+                                note_value,
+                            },
+                        ));
+                    }
+                    // XXX TODO: detect other options, eg tempo changes.
+                }
+                KshLine::Note(note) => {
+                    if let Some(current_bar) = bars.last_mut() {
+                        current_bar.push(note);
+                    }
+                }
+            }
+        }
+
+        let offset_counter = TimeSignaturesOffsets::new(
+            &time_signatures,
+            ksh_data.header.audio_offset as f32 / 1000.0,
+            bars.len(),
+            ksh_data.header.bpm as _,
+        );
+
+        let timing_points = time_signatures
+            .into_iter()
+            .map(|(measure, time_signature)| TimingPoint {
+                start_time: (offset_counter.offset_at_measure_and_subdivision(measure, 0, 1)
+                    * 1000.0) as u32,
+                beat_length: TimingPointBeatLength::Duration(
+                    offset_counter.duration_at_measure(measure) * 1000.0 as f32,
+                ),
+                meter: time_signature.num_beats,
+            })
+            .collect::<Vec<_>>();
+
+        let hit_objects = bars
+            .into_iter()
+            .enumerate()
+            .map(|(measure, notes)| {
+                let subdivision = notes.len();
+                notes
+                    .into_iter()
+                    .enumerate()
+                    .map(|(subdivision_index, note)| {
+                        let time = offset_counter.offset_at_measure_and_subdivision(
+                            measure,
+                            subdivision_index as _,
+                            subdivision as _,
+                        );
+                        // if measure < 5 {
+                        //     println!(
+                        //         "Time at measure {} subdiv {}/{} is {}",
+                        //         measure, subdivision_index, subdivision, time
+                        //     );
+                        // }
+
+                        bt_notes_to_hit_objects(&note.bt_lanes, time * 1000.0)
+                    })
+                    .flatten()
+                    .collect::<Vec<_>>()
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+
+        let info = ChartInfo {
+            audio_file_name: ksh_data.header.audio_filenames[0].clone(),
+            audio_lead_in: ksh_data.header.audio_offset,
+            mode: ChartMode::FixedColumns(4),
+        };
+
+        Ok(Chart {
+            info,
+            timing_points,
+            hit_objects,
+            playfield: Default::default(),
+        })
     }
 
     fn read_to_ksh_data(file_name: &str) -> Result<KshChartData> {
@@ -141,7 +255,7 @@ impl KshParser {
         for line in lines.flatten() {
             let chart_line = Self::parse_line(&line);
             if let Some(chart_line) = chart_line {
-                if let KshChartLine::Option((key, value)) = &chart_line {
+                if let KshLine::Option((key, value)) = &chart_line {
                     println!("{}", line);
                     all_options.insert(key.clone(), value.clone());
                 }
@@ -163,23 +277,25 @@ impl KshParser {
             .map(|s| s.to_string())
             .collect::<Vec<_>>();
         let audio_offset = option_get(&options, "o")?.parse().map_err(|e| e)?;
+        let bpm = option_get(&options, "t")?.parse().map_err(|e| e)?;
 
         Ok(KshHeader {
             audio_filenames,
             audio_offset,
+            bpm,
             ..Default::default()
         })
     }
 
-    fn parse_line(line: &str) -> Option<KshChartLine> {
+    fn parse_line(line: &str) -> Option<KshLine> {
         if line.starts_with(KSH_COMMENT_STR) {
             None
         } else if line == "--" {
-            Some(KshChartLine::Bar)
+            Some(KshLine::Bar)
         } else if line.contains("=") {
-            Some(KshChartLine::Option(Self::parse_option(line)))
+            Some(KshLine::Option(Self::parse_option(line)))
         } else if line.contains("|") {
-            Some(KshChartLine::Note(Self::parse_note(line)))
+            Some(KshLine::Note(Self::parse_note(line)))
         } else {
             None
         }

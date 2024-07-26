@@ -1,5 +1,5 @@
 pub mod parse;
-mod types;
+mod util;
 
 ///
 /// Chart format is based on osu!mania's beatmap file format.
@@ -11,6 +11,7 @@ mod types;
 /// Represents time signatures.
 pub struct TimingPoint {
     /// Start time in ms from the beginning of the audio.
+    /// XXX: change this to floating point.
     pub start_time: u32,
 
     /// Either beat duration in ms, or multiplier if inherited.
@@ -58,6 +59,7 @@ pub enum ChartMode {
     FixedColumns(u32),
 }
 
+#[derive(Default)]
 pub struct Playfield {
     /// Default hit object speed.
     pub default_speed: f32,

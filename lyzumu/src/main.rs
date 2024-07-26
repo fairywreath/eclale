@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     // Test KSH parsing.
     let chart = KshParser::parse_file(chart_file_path)?;
 
-    let chart = OsuManiaParser::parse_file(chart_file_path)?;
+    // let chart = OsuManiaParser::parse_file(chart_file_path)?;
 
     log::info!("Chart number of hit objects: {}", chart.hit_objects.len());
 
@@ -72,7 +72,11 @@ fn main() -> Result<()> {
     let lane_width = 2.0 / num_lanes;
     let lane_x_offset = (lane_width / 2.0) - 1.0;
     chart.hit_objects.iter().for_each(|hit_object| {
-        let lane = (hit_object.position.0 * num_lanes / 512.0).floor();
+        // Osu specific, need to normalize this in chart format.
+        // let lane = (hit_object.position.0 * num_lanes / 512.0).floor();
+
+        let lane = hit_object.position.0;
+
         let x_translation = lane_x_offset + (lane * lane_width);
         let z_translation = hit_object.time / 1000.0 * runner_speed;
         let renderer_hit_object = SceneHitObject {
@@ -131,15 +135,18 @@ fn main() -> Result<()> {
                     let dt = now - last_render_time;
                     last_render_time = now;
 
-                    println!("DT: {}", dt.as_secs_f32());
+                    current_runner_position += dt.as_secs_f32() * runner_speed;
+
+                    // println!("DT: {}", dt.as_secs_f32());
                     let current_audio_position = sound_handle.position() as f32;
                     if last_audio_position != current_audio_position {
-                        // println!(
-                        //     "last vs current sound position  {} {} {}",
-                        //     last_audio_position,
-                        //     current_audio_position,
-                        //     current_audio_position - last_audio_position
-                        // );
+                        println!(
+                            "last vs current sound position  {} {} {}, timer elapsed {} ",
+                            last_audio_position,
+                            current_audio_position,
+                            current_audio_position - last_audio_position,
+                            current_audio_position
+                        );
                         last_audio_position = current_audio_position;
                     }
 
@@ -147,7 +154,6 @@ fn main() -> Result<()> {
                     last_audio_position = current_audio_position;
 
                     // current_runner_position += audio_dt * runner_speed;
-                    current_runner_position += dt.as_secs_f32() * runner_speed;
                     scene_constants.runner_transform = Matrix4::new_translation(&Vector3::new(
                         0.0,
                         0.0,
