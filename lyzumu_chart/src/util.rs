@@ -1,4 +1,4 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct TimeSignature {
     /// Enumerator.
     pub(crate) num_beats: u32,
@@ -22,6 +22,8 @@ impl TimeSignaturesOffsets {
         num_measures: usize,
         bpm: u32,
     ) -> Self {
+        // println!("Time signatures {:#?}", &time_signatures);
+
         // Very unfortunate impure functions.
         let mut current_time_signature = 0;
         let all_measures_time_signatures = (0..num_measures)
@@ -35,14 +37,27 @@ impl TimeSignaturesOffsets {
             })
             .collect::<Vec<_>>();
 
-        let mut current_measure_offset = 0.0;
-        println!("music offset {}", music_offset);
+        let mut current_measure_offset = music_offset;
+        // let mut current_measure_offset = ;
+        // println!("All time signatures {:#?}", &all_measures_time_signatures);
+        // for (index, value) in all_measures_time_signatures.iter().enumerate() {
+        //     println!("Index: {}, Value: {:?}", index, value);
+        // }
+        //
+        // println!("Parsing with num time signatures {}", time_signatures.len());
+        // println!("music offset {}", music_offset);
 
         let offsets = all_measures_time_signatures
             .into_iter()
             .map(|time_signature| {
                 let beat_duration = 60.0 / bpm as f32;
-                let measure_duration = time_signature.num_beats as f32 * beat_duration;
+
+                let measure_duration = time_signature.num_beats as f32
+                    * beat_duration
+                // XXX: Measure duration should not be affacted by the note value in music theory, but it does
+                // for ksh.
+                    * (4.0 / time_signature.note_value as f32);
+
                 let measure_offset = current_measure_offset;
 
                 current_measure_offset += measure_duration;
@@ -50,7 +65,9 @@ impl TimeSignaturesOffsets {
                 (measure_offset, measure_duration)
             })
             .collect::<Vec<_>>();
-
+        for (index, value) in offsets.iter().enumerate() {
+            println!("Index: {}, Value: {:?}", index, value);
+        }
         Self {
             offsets,
             // time_signatures: all_measures_time_signatures,
@@ -64,10 +81,6 @@ impl TimeSignaturesOffsets {
         subdivision: u32,
     ) -> f32 {
         let (offset, duration) = self.offsets[measure];
-        if (measure < 5) {
-            println!("offset {} duration {}", offset, duration);
-        }
-
         offset + ((subdivision_index as f32 / subdivision as f32) as f32 * duration)
     }
 

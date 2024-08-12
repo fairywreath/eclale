@@ -47,7 +47,7 @@ pub struct ChartInfo {
     pub audio_file_name: String,
 
     /// Offset in ms before the audio starts playing.
-    pub audio_lead_in: u32,
+    pub audio_lead_in: i32,
 
     /// Contains game mode specific parameters.
     pub mode: ChartMode,

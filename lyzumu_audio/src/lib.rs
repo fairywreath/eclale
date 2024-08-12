@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use kira::{
     manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
-    sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings},
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
 };
 
 pub struct AudioSystem {

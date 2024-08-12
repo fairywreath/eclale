@@ -169,13 +169,13 @@ fn compile_shader_through_glslangvalidator_cli(
     }
 }
 
-pub struct ShaderModuleDescriptor<'a> {
-    pub source_file_name: &'a str,
+pub struct ShaderModuleDescriptor {
+    pub source_file_name: String,
     pub shader_stage: ShaderStage,
 }
 
-impl<'a> ShaderModuleDescriptor<'a> {
-    pub fn new(source_file_name: &'a str, shader_stage: ShaderStage) -> Self {
+impl<'a> ShaderModuleDescriptor {
+    pub fn new(source_file_name: String, shader_stage: ShaderStage) -> Self {
         Self {
             source_file_name,
             shader_stage,
@@ -199,9 +199,10 @@ impl Drop for ShaderModule {
 
 impl Device {
     pub fn create_shader_module(&self, desc: ShaderModuleDescriptor) -> Result<ShaderModule> {
+        let binary_file_name = desc.source_file_name.clone() + ".spv";
         let bytes = compile_shader_through_glslangvalidator_cli(
-            desc.source_file_name,
-            &(String::from(desc.source_file_name) + ".spv"),
+            &desc.source_file_name,
+            &binary_file_name,
             desc.shader_stage,
         )?;
         let mut cursor = std::io::Cursor::new(bytes);

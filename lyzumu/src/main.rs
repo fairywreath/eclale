@@ -1,12 +1,9 @@
 use std::{env, path::Path, time::Instant};
 
 use anyhow::Result;
-use lyzumu_graphics::{
-    mesh,
-    renderer::track::{TrackRenderer, TrackUniformBufferData},
-    scene::{SceneHitObject, TrackScene},
+use nalgebra::{
+    Isometry3, Matrix4, Orthographic3, Perspective3, Point3, Vector2, Vector3, Vector4,
 };
-use nalgebra::{Isometry3, Matrix4, Orthographic3, Perspective3, Point3, Vector3, Vector4};
 use winit::{
     dpi,
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -19,6 +16,8 @@ use winit::{
 
 use lyzumu_audio::AudioSystem;
 use lyzumu_chart::parse::{ksh::KshParser, osu::OsuManiaParser};
+
+mod game_renderer;
 
 fn main() -> Result<()> {
     let env = env_logger::Env::default()
@@ -46,6 +45,10 @@ fn main() -> Result<()> {
     // Load audio.
     let mut audio_system = AudioSystem::new()?;
     let audio_file_path = chart_parent_dir.join(&chart.info.audio_file_name);
+    log::info!(
+        "Audio file path: {}",
+        &audio_file_path.clone().to_str().unwrap()
+    );
     let sound_index =
         audio_system.load_static_sound_from_file(audio_file_path.to_str().unwrap())?;
 
@@ -58,39 +61,45 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     // Initialize renderer.
-    let mut track_renderer = TrackRenderer::new(
-        window.window_handle()?.raw_window_handle()?,
-        window.display_handle()?.raw_display_handle()?,
-    )?;
-    let screen_dimensions = track_renderer.swapchain_extent();
+    // let mut track_renderer = TrackRenderer::new(
+    //     window.window_handle()?.raw_window_handle()?,
+    //     window.display_handle()?.raw_display_handle()?,
+    // )?;
+    // let screen_dimensions = track_renderer.swapchain_extent();
+    //
+    let screen_dimensions = Vector2::new(1920.0, 1080.0);
 
-    let runner_speed = 17.0 as f32;
+    let runner_speed = 25.0 as f32;
+    //
+    // let mut renderer_hit_objects = Vec::new();
+    // // let num_lanes = chart.info.mode.
+    // let num_lanes = 4.0;
+    // let lane_width = 2.0 / num_lanes;
+    // let lane_x_offset = (lane_width / 2.0) - 1.0;
+    // chart.hit_objects.iter().for_each(|hit_object| {
+    //     // Osu specific, need to normalize this in chart format.
+    //     // let lane = (hit_object.position.0 * num_lanes / 512.0).floor();
+    //     let lane = hit_object.position.0;
+    //
+    //     let x_translation = lane_x_offset + (lane * lane_width);
+    //     let z_translation = hit_object.time / 1000.0 * runner_speed;
+    //     let renderer_hit_object = SceneHitObject {
+    //         transform: Matrix4::new_translation(&Vector3::new(x_translation, 0.0, z_translation)),
+    //         base_color: Vector4::new(1.0, 0.0, 0.0, 1.0),
+    //     };
+    //     renderer_hit_objects.push(renderer_hit_object);
+    // });
+    // let renderer_scene_data = TrackScene {
+    //     hit_object_mesh: Polyhedron::cuboid(0.4, 0.1, 0.2).into(),
+    //     // hit_object_mesh: Polyhedron::octahedron(0.3, 1.6).into(),
+    //     // hit_object_mesh: Torus::new(0.1, 0.04, 10, 10).to_mesh(),
+    //     // hit_object_mesh: SphereUv::new(0.2, 10, 10).generate_mesh(),
+    //     // hit_object_mesh: Capsule3dMeshBuilder::default().build(),
+    //     hit_objects: renderer_hit_objects,
+    // };
+    // track_renderer.load_scene(renderer_scene_data)?;
 
-    let mut renderer_hit_objects = Vec::new();
-    // let num_lanes = chart.info.mode.
-    let num_lanes = 4.0;
-    let lane_width = 2.0 / num_lanes;
-    let lane_x_offset = (lane_width / 2.0) - 1.0;
-    chart.hit_objects.iter().for_each(|hit_object| {
-        // Osu specific, need to normalize this in chart format.
-        // let lane = (hit_object.position.0 * num_lanes / 512.0).floor();
-
-        let lane = hit_object.position.0;
-
-        let x_translation = lane_x_offset + (lane * lane_width);
-        let z_translation = hit_object.time / 1000.0 * runner_speed;
-        let renderer_hit_object = SceneHitObject {
-            transform: Matrix4::new_translation(&Vector3::new(x_translation, 0.0, z_translation)),
-            base_color: Vector4::new(1.0, 0.0, 0.0, 1.0),
-        };
-        renderer_hit_objects.push(renderer_hit_object);
-    });
-    let renderer_scene_data = TrackScene {
-        hit_object_mesh: mesh::cuboid::Cuboid::new(0.4, 0.1, 0.2).into(),
-        // hit_object_mesh: mesh::cuboid::Cuboid::new(1.0, 1.0, 1.0).into(),
-        hit_objects: renderer_hit_objects,
-    };
-    track_renderer.load_scene(renderer_scene_data)?;
+    log::info!("Audio file name {}", &chart.info.audio_file_name);
 
     // Play audio.
     let sound_handle = audio_system.play_static_sound(sound_index)?;
@@ -101,8 +110,8 @@ fn main() -> Result<()> {
     let mut current_runner_position = 0.0;
 
     // XXX TODO: Need to find good parameters for this
-    let eye = Point3::new(0.0, -1.0, -5.2);
-    let target = Point3::new(0.0, 2.5, 1.0);
+    let eye = Point3::new(0.0, -3.0, -2.2);
+    let target = Point3::new(0.0, 0.8, 4.4);
 
     let view = Isometry3::look_at_rh(&eye, &target, &Vector3::y());
     let projection = Perspective3::new(
@@ -116,11 +125,11 @@ fn main() -> Result<()> {
             // XXX: Use view and projection matrices that fit accordingly to the vulkan coord system. (?)
             * Matrix4::new_nonuniform_scaling(&Vector3::new(-1.0, 1.0, 1.0));
 
-    let mut scene_constants = TrackUniformBufferData {
-        view_projection,
-        runner_transform: Matrix4::identity(),
-    };
-
+    // let mut scene_constants = TrackUniformBufferData {
+    //     view_projection,
+    //     runner_transform: Matrix4::identity(),
+    // };
+    //
     event_loop.run(move |event, eltw| {
         eltw.set_control_flow(ControlFlow::Poll);
 
@@ -140,13 +149,13 @@ fn main() -> Result<()> {
                     // println!("DT: {}", dt.as_secs_f32());
                     let current_audio_position = sound_handle.position() as f32;
                     if last_audio_position != current_audio_position {
-                        println!(
-                            "last vs current sound position  {} {} {}, timer elapsed {} ",
-                            last_audio_position,
-                            current_audio_position,
-                            current_audio_position - last_audio_position,
-                            current_audio_position
-                        );
+                        // println!(
+                        //     "last vs current sound position  {} {} {}, timer elapsed {} ",
+                        //     last_audio_position,
+                        //     current_audio_position,
+                        //     current_audio_position - last_audio_position,
+                        //     current_audio_position
+                        // );
                         last_audio_position = current_audio_position;
                     }
 
@@ -154,15 +163,15 @@ fn main() -> Result<()> {
                     last_audio_position = current_audio_position;
 
                     // current_runner_position += audio_dt * runner_speed;
-                    scene_constants.runner_transform = Matrix4::new_translation(&Vector3::new(
-                        0.0,
-                        0.0,
-                        -current_runner_position as _,
-                    ));
-
-                    track_renderer.update_scene_constants(scene_constants.clone());
-
-                    track_renderer.render().unwrap();
+                    // scene_constants.runner_transform = Matrix4::new_translation(&Vector3::new(
+                    //     0.0,
+                    //     0.0,
+                    //     -current_runner_position as _,
+                    // ));
+                    //
+                    // track_renderer.update_scene_constants(scene_constants.clone());
+                    //
+                    // track_renderer.render().unwrap();
                 }
                 _ => (),
             },

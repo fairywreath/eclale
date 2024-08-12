@@ -115,7 +115,7 @@ enum KshLine {
 struct KshHeader {
     audio_filenames: Vec<String>,
     /// Offset to start of the audio in milliseconds.
-    audio_offset: u32,
+    audio_offset: i32,
     bpm: u32,
     bg_filenames: Vec<String>,
     video_filename: String,
@@ -215,13 +215,6 @@ impl KshParser {
                             subdivision_index as _,
                             subdivision as _,
                         );
-                        // if measure < 5 {
-                        //     println!(
-                        //         "Time at measure {} subdiv {}/{} is {}",
-                        //         measure, subdivision_index, subdivision, time
-                        //     );
-                        // }
-
                         bt_notes_to_hit_objects(&note.bt_lanes, time * 1000.0)
                     })
                     .flatten()
@@ -256,13 +249,13 @@ impl KshParser {
             let chart_line = Self::parse_line(&line);
             if let Some(chart_line) = chart_line {
                 if let KshLine::Option((key, value)) = &chart_line {
-                    println!("{}", line);
                     all_options.insert(key.clone(), value.clone());
                 }
                 body.push(chart_line);
             }
         }
 
+        log::debug!("Creating ksh header!");
         let header = Self::create_header_from_options(&all_options)?;
 
         log::info!("Parsed KSH header {:?}", &header);
@@ -273,9 +266,10 @@ impl KshParser {
 
     fn create_header_from_options(options: &HashMap<String, String>) -> Result<KshHeader> {
         let audio_filenames = option_get(&options, "m")?
-            .split(",")
+            .split(";")
             .map(|s| s.to_string())
             .collect::<Vec<_>>();
+        log::debug!("Parsed audio filenames!");
         let audio_offset = option_get(&options, "o")?.parse().map_err(|e| e)?;
         let bpm = option_get(&options, "t")?.parse().map_err(|e| e)?;
 

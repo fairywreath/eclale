@@ -86,7 +86,7 @@ impl OsuManiaParser {
             .ok_or_else(|| anyhow!("Missing AudioFilename"))?
             .to_string();
 
-        let audio_lead_in: u32 = general_section
+        let audio_lead_in: i32 = general_section
             .get("AudioLeadIn")
             .ok_or_else(|| anyhow!("Missing AudioLeadIn"))?
             .parse()
