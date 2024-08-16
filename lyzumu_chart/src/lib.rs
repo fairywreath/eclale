@@ -1,73 +1,94 @@
 pub mod parse;
 mod util;
 
-///
-/// Chart format is based on osu!mania's beatmap file format.
-/// This is a "low-level"/"raw" chart format, in a sense that every timing/beat is specified by
-/// a raw timed offset(eg. milliseconds) from the beginning of the song instead of higher-level
-/// constructs such as beats and measures.
-///
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TimeSignature {
+    /// Enumerator.
+    pub(crate) num_beats: u32,
+    /// Denominator.
+    pub(crate) note_value: u32,
+}
 
-/// Represents time signatures.
 pub struct TimingPoint {
-    /// Start time in ms from the beginning of the audio.
-    /// XXX: change this to floating point.
-    pub start_time: u32,
-
-    /// Either beat duration in ms, or multiplier if inherited.
-    pub beat_length: TimingPointBeatLength,
-
-    /// Number of beats in a measure.
-    pub meter: u32,
-}
-
-pub enum TimingPointBeatLength {
-    Duration(f32),
-}
-
-pub struct HitObject {
-    pub position: (f32, f32),
-
-    /// Time in milliseconds from the start of the audio.
-    pub time: f32,
-
-    /// Object type additional parameters, may contain additional parameters
-    pub object_parameters: HitObjectParameters,
-}
-
-pub enum HitObjectParameters {
-    Note,
-
-    /// Contains end time in ms from the start of the audio.
-    HoldNote(f32),
-}
-
-pub struct ChartInfo {
-    /// File path to raw audio file.
-    pub audio_file_name: String,
-
-    /// Offset in ms before the audio starts playing.
-    pub audio_lead_in: i32,
-
-    /// Contains game mode specific parameters.
-    pub mode: ChartMode,
-}
-
-pub enum ChartMode {
-    /// Classic fixed number of columns, eg. 4K, 7K, etc.
-    /// Contains number of columns.
-    FixedColumns(u32),
+    measure: (u32, f32),
+    pub seconds: Option<f32>,
+    pub z_position: Option<f32>,
 }
 
 #[derive(Default)]
-pub struct Playfield {
-    /// Default hit object speed.
-    pub default_speed: f32,
+pub struct Header {
+    pub audio_filename: String,
+    /// Offset to start of audio in seconds.
+    pub audio_offset: f32,
+
+    pub(crate) default_tempo: u32,
+    pub(crate) default_time_signature: TimeSignature,
+}
+
+pub struct BezierControlPoint {
+    pub x_position: f32,
+    pub time: TimingPoint,
+}
+
+pub struct Platform {
+    pub start_time: TimingPoint,
+    pub end_time: TimingPoint,
+
+    /// Vertices for the "quad" platform in order of
+    /// bottom_left, bottom_right, top_left, top_right.
+    pub vertices_x_positions: (f32, f32, f32, f32),
+
+    // Left and right bezier control points.
+    pub control_points: (Option<BezierControlPoint>, Option<BezierControlPoint>),
+}
+
+impl Platform {
+    pub fn is_quad(&self) -> bool {
+        self.control_points.0.is_none() && self.control_points.1.is_none()
+    }
+}
+
+pub enum BasicNoteType {
+    Basic1,
+    Basic2,
+    Basic3,
+    Basic4,
+}
+
+pub enum EvadeNoteType {
+    Evade1,
+    Evade2,
+    Evade3,
+    Evade4,
+}
+
+pub enum ContactNoteType {
+    Contact1,
+    Contact2,
+}
+
+pub struct HoldNote {
+    pub end_time: TimingPoint,
+    pub control_points: (Option<BezierControlPoint>, Option<BezierControlPoint>),
+}
+
+pub enum NoteData {
+    Basic(BasicNoteType),
+    BasicHold((BasicNoteType, HoldNote)),
+    Target,
+    TargetHold(HoldNote),
+    Evade(EvadeNoteType),
+    Contact(ContactNoteType),
+    Floor,
+}
+
+pub struct Note {
+    pub data: NoteData,
+    pub time: TimingPoint,
 }
 
 pub struct Chart {
-    pub info: ChartInfo,
-    pub timing_points: Vec<TimingPoint>,
-    pub hit_objects: Vec<HitObject>,
-    pub playfield: Playfield,
+    pub header: Header,
+    pub platforms: Vec<Platform>,
+    pub notes: Vec<Note>,
 }

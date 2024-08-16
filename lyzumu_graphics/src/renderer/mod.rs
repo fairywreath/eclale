@@ -276,6 +276,7 @@ impl Renderer {
             device.create_descriptor_set_layout(instanced_single_vertices_layout_descriptor)?;
 
         // XXX TODO: Can just completely get rid of this since we can control the vertex and index offset.
+        //           The whole platform is just one big mesh.
         let instanced_dynamic_vertices_layout_descriptor = DescriptorSetLayoutDescriptor {
             bindings: vec![
                 DescriptorSetLayoutBinding::new()

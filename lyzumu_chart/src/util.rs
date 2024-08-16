@@ -1,61 +1,37 @@
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct TimeSignature {
-    /// Enumerator.
-    pub(crate) num_beats: u32,
-    /// Denominator.
-    pub(crate) note_value: u32,
+use crate::TimeSignature;
+
+/// Contains all required musical and rhythm data for a single measure/bar to calculate raw time offsets.
+#[derive(Default, Clone)]
+pub(crate) struct MeasureData {
+    pub(crate) time_signature: TimeSignature,
+    pub(crate) tempo: u32,
+
+    /// Subdivision the notes in the measure are written against.
+    pub(crate) subdivision: u32,
 }
 
 /// Counts offset at a specific measure and subdivison.
 pub(crate) struct TimeSignaturesOffsets {
+    measures: Vec<MeasureData>,
     /// Offsets in milliseconds indexed by measure,
     /// with each entry being (measure start offset, measure duration).
-    /// XXX: Also support mid measure tempo changes.
-    offsets: Vec<(f32, f32)>,
-    // time_signatures: Vec<TimeSignature>,
+    measure_offsets: Vec<(f32, f32)>,
 }
 
 impl TimeSignaturesOffsets {
-    pub(crate) fn new(
-        time_signatures: &[(usize, TimeSignature)],
-        music_offset: f32,
-        num_measures: usize,
-        bpm: u32,
-    ) -> Self {
-        // println!("Time signatures {:#?}", &time_signatures);
-
-        // Very unfortunate impure functions.
-        let mut current_time_signature = 0;
-        let all_measures_time_signatures = (0..num_measures)
-            .into_iter()
-            .map(|i| {
-                let next_index = current_time_signature + 1;
-                if next_index < time_signatures.len() && time_signatures[next_index].0 <= i {
-                    current_time_signature = next_index;
-                }
-                time_signatures[current_time_signature].1
-            })
-            .collect::<Vec<_>>();
-
+    pub(crate) fn new(measures: Vec<MeasureData>, music_offset: f32) -> Self {
         let mut current_measure_offset = music_offset;
-        // let mut current_measure_offset = ;
-        // println!("All time signatures {:#?}", &all_measures_time_signatures);
-        // for (index, value) in all_measures_time_signatures.iter().enumerate() {
-        //     println!("Index: {}, Value: {:?}", index, value);
-        // }
-        //
-        // println!("Parsing with num time signatures {}", time_signatures.len());
-        // println!("music offset {}", music_offset);
+        let measure_offsets = measures
+            .iter()
+            .map(|measure| {
+                let time_signature = measure.time_signature;
+                let bpm = measure.tempo;
 
-        let offsets = all_measures_time_signatures
-            .into_iter()
-            .map(|time_signature| {
                 let beat_duration = 60.0 / bpm as f32;
 
                 let measure_duration = time_signature.num_beats as f32
                     * beat_duration
-                // XXX: Measure duration should not be affacted by the note value in music theory, but it does
-                // for ksh.
+                    // BPM is measured in quarter notes, i.e. `4.0`.
                     * (4.0 / time_signature.note_value as f32);
 
                 let measure_offset = current_measure_offset;
@@ -65,26 +41,19 @@ impl TimeSignaturesOffsets {
                 (measure_offset, measure_duration)
             })
             .collect::<Vec<_>>();
-        for (index, value) in offsets.iter().enumerate() {
-            println!("Index: {}, Value: {:?}", index, value);
-        }
         Self {
-            offsets,
-            // time_signatures: all_measures_time_signatures,
+            measures,
+            measure_offsets,
         }
     }
 
-    pub(crate) fn offset_at_measure_and_subdivision(
-        &self,
-        measure: usize,
-        subdivision_index: u32,
-        subdivision: u32,
-    ) -> f32 {
-        let (offset, duration) = self.offsets[measure];
+    pub(crate) fn offset_at_measure(&self, measure: usize, subdivision_index: u32) -> f32 {
+        let (offset, duration) = self.measure_offsets[measure];
+        let subdivision = self.measures[measure].subdivision;
         offset + ((subdivision_index as f32 / subdivision as f32) as f32 * duration)
     }
 
     pub(crate) fn duration_at_measure(&self, measure: usize) -> f32 {
-        self.offsets[measure].1
+        self.measure_offsets[measure].1
     }
 }
