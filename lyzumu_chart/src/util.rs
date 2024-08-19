@@ -13,6 +13,7 @@ pub(crate) struct MeasureData {
 /// Counts offset at a specific measure and subdivison.
 pub(crate) struct TimeSignaturesOffsets {
     measures: Vec<MeasureData>,
+
     /// Offsets in milliseconds indexed by measure,
     /// with each entry being (measure start offset, measure duration).
     measure_offsets: Vec<(f32, f32)>,

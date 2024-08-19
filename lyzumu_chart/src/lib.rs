@@ -10,9 +10,19 @@ pub(crate) struct TimeSignature {
 }
 
 pub struct TimingPoint {
-    measure: (u32, f32),
+    pub(crate) measure: (u32, f32),
     pub seconds: Option<f32>,
     pub z_position: Option<f32>,
+}
+
+impl TimingPoint {
+    pub(crate) fn new_measure(measure: u32, beat: f32) -> Self {
+        Self {
+            measure: (measure, beat),
+            seconds: None,
+            z_position: None,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -39,12 +49,17 @@ pub struct Platform {
     pub vertices_x_positions: (f32, f32, f32, f32),
 
     // Left and right bezier control points.
-    pub control_points: (Option<BezierControlPoint>, Option<BezierControlPoint>),
+    pub control_points: Vec<Option<BezierControlPoint>>,
 }
 
 impl Platform {
     pub fn is_quad(&self) -> bool {
-        self.control_points.0.is_none() && self.control_points.1.is_none()
+        for point in &self.control_points {
+            if point.is_some() {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -69,7 +84,17 @@ pub enum ContactNoteType {
 
 pub struct HoldNote {
     pub end_time: TimingPoint,
-    pub control_points: (Option<BezierControlPoint>, Option<BezierControlPoint>),
+    pub control_points: Vec<Option<BezierControlPoint>>,
+}
+
+pub enum FlickDirection {
+    Left,
+    Right,
+}
+
+pub struct FlickNote {
+    pub direction: FlickDirection,
+    pub end_x_position: f32,
 }
 
 pub enum NoteData {
@@ -80,11 +105,14 @@ pub enum NoteData {
     Evade(EvadeNoteType),
     Contact(ContactNoteType),
     Floor,
+    FloorHold(HoldNote),
+    Flick(FlickNote),
 }
 
 pub struct Note {
     pub data: NoteData,
     pub time: TimingPoint,
+    pub x_position: f32,
 }
 
 pub struct Chart {

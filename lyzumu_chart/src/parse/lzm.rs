@@ -1,9 +1,12 @@
-use std::collections::HashMap;
-
 use anyhow::{anyhow, Result};
 use regex::Regex;
 
-use crate::{parse::read_lines, util::MeasureData, Chart, Header, TimeSignature};
+use crate::{
+    parse::read_lines,
+    util::{MeasureData, TimeSignaturesOffsets},
+    BasicNoteType, BezierControlPoint, Chart, ContactNoteType, EvadeNoteType, FlickDirection,
+    FlickNote, Header, HoldNote, Note, NoteData, Platform, TimeSignature, TimingPoint,
+};
 
 enum Section {
     Header,
@@ -22,11 +25,51 @@ impl TryFrom<&str> for Section {
     }
 }
 
+impl TryFrom<&str> for BasicNoteType {
+    type Error = anyhow::Error;
+
+    fn try_from(s: &str) -> Result<Self> {
+        match s {
+            "B1" | "HB1" => Ok(Self::Basic1),
+            "B2" | "HB2" => Ok(Self::Basic2),
+            "B3" | "HB3" => Ok(Self::Basic3),
+            "B4" | "HB4" => Ok(Self::Basic4),
+            _ => Err(anyhow!("Invalid string for section tag conversion: {}", s)),
+        }
+    }
+}
+
+impl TryFrom<&str> for EvadeNoteType {
+    type Error = anyhow::Error;
+
+    fn try_from(s: &str) -> Result<Self> {
+        match s {
+            "E1" => Ok(Self::Evade1),
+            "E2" => Ok(Self::Evade2),
+            "E3" => Ok(Self::Evade3),
+            "E4" => Ok(Self::Evade4),
+            _ => Err(anyhow!("Invalid string for section tag conversion: {}", s)),
+        }
+    }
+}
+
+impl TryFrom<&str> for ContactNoteType {
+    type Error = anyhow::Error;
+
+    fn try_from(s: &str) -> Result<Self> {
+        match s {
+            "C1" => Ok(Self::Contact1),
+            "C2" => Ok(Self::Contact2),
+            _ => Err(anyhow!("Invalid string for section tag conversion: {}", s)),
+        }
+    }
+}
+
 struct BodyLine {
     body_type: String,
     beat: Vec<String>,
     position: Vec<String>,
-    additional_options: Option<String>,
+    additional_options: String,
 }
 
 pub struct LzmParser {
@@ -103,11 +146,16 @@ impl LzmParser {
                                 _ => log::warn!("Unrecognized chart body option key {}", key),
                             }
                         } else if let Some(body_line) = self.parse_body_line(line) {
-                            match body_line.body_type {
-                                _ => log::warn!(
-                                    "Unregocnized chart body type {}",
-                                    body_line.body_type
-                                ),
+                            match body_line.body_type.as_str() {
+                                "PQ" | "PC" => {
+                                    platforms.push(Self::parse_platform(
+                                        &body_line,
+                                        measures.len() as _,
+                                    )?);
+                                }
+                                _ => {
+                                    notes.push(Self::parse_note(&body_line, measures.len() as _)?);
+                                }
                             }
                         } else {
                             log::warn!("Unrecognized chart body line {}", line);
@@ -117,10 +165,91 @@ impl LzmParser {
             }
         }
 
+        let offset_counter = TimeSignaturesOffsets::new(measures, header.audio_offset);
+        // XXX TODO: Properly count time offsets for notes.
+
         Ok(Chart {
             header,
             platforms,
             notes,
+        })
+    }
+
+    fn parse_note(body_line: &BodyLine, current_measure: u32) -> Result<Note> {
+        let time = Self::parse_time(&body_line.beat[0], current_measure)?;
+        match body_line.body_type.as_str() {
+            "B1" | "B2" | "B3" | "B4" => Ok(Note {
+                data: NoteData::Basic(body_line.body_type.as_str().try_into()?),
+                time,
+                x_position: body_line.position[0].parse()?,
+            }),
+            "T" => Ok(Note {
+                data: NoteData::Target,
+                time,
+                x_position: body_line.position[0].parse()?,
+            }),
+            "E1" | "E2" | "E3" | "E4" => Ok(Note {
+                data: NoteData::Evade(body_line.body_type.as_str().try_into()?),
+                time,
+                x_position: body_line.position[0].parse()?,
+            }),
+            "C1" | "C2" => Ok(Note {
+                data: NoteData::Contact(body_line.body_type.as_str().try_into()?),
+                time,
+                x_position: body_line.position[0].parse()?,
+            }),
+            "FO" => Ok(Note {
+                data: NoteData::Floor,
+                time,
+                x_position: 0.0,
+            }),
+            "FL" | "FR" => {
+                let direction = if body_line.body_type == "FL" {
+                    FlickDirection::Left
+                } else {
+                    FlickDirection::Right
+                };
+                Ok(Note {
+                    data: NoteData::Flick(FlickNote {
+                        direction,
+                        end_x_position: body_line.additional_options.parse()?,
+                    }),
+                    time,
+                    x_position: 0.0,
+                })
+            }
+            "HB1" | "HB2" | "HB3" | "HB4" => Ok(Note {
+                data: NoteData::BasicHold((
+                    body_line.body_type.as_str().try_into()?,
+                    Self::parse_hold_note(body_line, current_measure)?,
+                )),
+                time,
+                x_position: 0.0,
+            }),
+            "HT" => Ok(Note {
+                data: NoteData::TargetHold(Self::parse_hold_note(body_line, current_measure)?),
+                time,
+                x_position: 0.0,
+            }),
+            "HF" => Ok(Note {
+                data: NoteData::FloorHold(Self::parse_hold_note(body_line, current_measure)?),
+                time,
+                x_position: 0.0,
+            }),
+            _ => Err(anyhow!(
+                "Unrecognizable chart body type {}",
+                body_line.body_type
+            )),
+        }
+    }
+
+    fn parse_hold_note(body_line: &BodyLine, current_measure: u32) -> Result<HoldNote> {
+        Ok(HoldNote {
+            end_time: Self::parse_time(&body_line.beat[1], current_measure)?,
+            control_points: Self::parse_2_control_points(
+                &body_line.additional_options,
+                current_measure,
+            )?,
         })
     }
 
@@ -185,9 +314,7 @@ impl LzmParser {
                 .split(';')
                 .map(|s| s.trim().to_string())
                 .collect();
-            let additional_options = caps
-                .name("additional_options")
-                .map(|m| m.as_str().trim().to_string());
+            let additional_options = caps.name("additional_options")?.as_str().to_string();
 
             Some(BodyLine {
                 body_type,
@@ -197,6 +324,93 @@ impl LzmParser {
             })
         } else {
             None
+        }
+    }
+
+    fn parse_time(input: &str, current_measure: u32) -> Result<TimingPoint> {
+        let inputs = input.split(",").collect::<Vec<_>>();
+        if inputs.len() > 1 {
+            let beat = inputs[0].parse()?;
+            let delta_measure = inputs[1].parse::<u32>()?;
+
+            Ok(TimingPoint::new_measure(
+                current_measure + delta_measure,
+                beat,
+            ))
+        } else {
+            let beat = inputs[0].parse()?;
+            Ok(TimingPoint::new_measure(current_measure, beat))
+        }
+    }
+
+    fn parse_platform(body_line: &BodyLine, current_measure: u32) -> Result<Platform> {
+        let platform = Platform {
+            start_time: Self::parse_time(&body_line.beat[0], current_measure)?,
+            end_time: Self::parse_time(&body_line.beat[1], current_measure)?,
+            vertices_x_positions: (
+                body_line.position[0].parse()?,
+                body_line.position[1].parse()?,
+                body_line.position[2].parse()?,
+                body_line.position[3].parse()?,
+            ),
+            control_points: if !body_line.additional_options.is_empty() {
+                Self::parse_control_points(&body_line.additional_options, current_measure)?
+            } else {
+                Vec::new()
+            },
+        };
+
+        Ok(platform)
+    }
+
+    fn parse_control_points(
+        input: &str,
+        current_measure: u32,
+    ) -> Result<Vec<Option<BezierControlPoint>>> {
+        if input.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let inputs = input.split(";").collect::<Vec<_>>();
+
+        let mut points = Vec::new();
+        points.extend(Self::parse_2_control_points(&inputs[0], current_measure)?);
+        points.extend(Self::parse_2_control_points(&inputs[1], current_measure)?);
+
+        Ok(points)
+    }
+
+    fn parse_2_control_points(
+        input: &str,
+        current_measure: u32,
+    ) -> Result<Vec<Option<BezierControlPoint>>> {
+        let mut points = Vec::new();
+
+        let inputs = input.split(":").collect::<Vec<_>>();
+        if !inputs.is_empty() {
+            let point_1_inputs = inputs[0].split_once(",");
+            let point_2_inputs = inputs[1].split_once(",");
+            points.push(Self::parse_control_point(point_1_inputs, current_measure)?);
+            points.push(Self::parse_control_point(point_2_inputs, current_measure)?);
+        } else {
+            points.push(None);
+            points.push(None);
+        }
+
+        Ok(points)
+    }
+
+    fn parse_control_point(
+        inputs: Option<(&str, &str)>,
+        current_measure: u32,
+    ) -> Result<Option<BezierControlPoint>> {
+        if let Some((x_position_str, time_str)) = &inputs {
+            Ok(Some(BezierControlPoint {
+                x_position: x_position_str.parse()?,
+                time: Self::parse_time(time_str, current_measure)?,
+            }))
+        } else {
+            Ok(None)
         }
     }
 }
