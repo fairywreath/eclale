@@ -17,7 +17,7 @@ use winit::{
 use lyzumu_audio::AudioSystem;
 use lyzumu_chart::parse::{ksh::KshParser, osu::OsuManiaParser};
 
-mod game_renderer;
+mod track_renderer;
 
 fn main() -> Result<()> {
     let env = env_logger::Env::default()

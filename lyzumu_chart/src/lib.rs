@@ -9,10 +9,18 @@ pub(crate) struct TimeSignature {
     pub(crate) note_value: u32,
 }
 
+#[derive(Clone)]
 pub struct TimingPoint {
     pub(crate) measure: (u32, f32),
     pub seconds: Option<f32>,
     pub z_position: Option<f32>,
+}
+
+impl TimingPoint {
+    pub(crate) fn seconds(mut self, seconds: f32) -> Self {
+        self.seconds = Some(seconds);
+        self
+    }
 }
 
 impl TimingPoint {
@@ -60,6 +68,12 @@ impl Platform {
             }
         }
         true
+    }
+
+    pub(crate) fn timing_points(mut self, start_time: TimingPoint, end_time: TimingPoint) -> Self {
+        self.start_time = start_time;
+        self.end_time = end_time;
+        self
     }
 }
 

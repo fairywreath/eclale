@@ -60,11 +60,11 @@ fn create_render_description() -> RenderDescription {
     }
 }
 
-pub(crate) struct GameRenderer {
+pub(crate) struct TrackRenderer {
     renderer: Renderer,
 }
 
-impl GameRenderer {
+impl TrackRenderer {
     pub(crate) fn new(
         window_handle: RawWindowHandle,
         display_handle: RawDisplayHandle,

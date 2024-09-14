@@ -166,13 +166,98 @@ impl LzmParser {
         }
 
         let offset_counter = TimeSignaturesOffsets::new(measures, header.audio_offset);
-        // XXX TODO: Properly count time offsets for notes.
+        let notes = Self::count_note_offsets(&offset_counter, notes);
+        let platforms = Self::count_platform_offsets(&offset_counter, platforms);
 
         Ok(Chart {
             header,
             platforms,
             notes,
         })
+    }
+
+    fn count_note_offsets(offset_counter: &TimeSignaturesOffsets, notes: Vec<Note>) -> Vec<Note> {
+        notes
+            .into_iter()
+            .map(|n| {
+                let time = Self::count_offset_seconds(offset_counter, &n.time);
+                let data = match n.data {
+                    NoteData::BasicHold((note_type, hold_note)) => NoteData::BasicHold((
+                        note_type,
+                        Self::count_hold_note_offset(offset_counter, hold_note),
+                    )),
+                    NoteData::TargetHold(hold_note) => NoteData::TargetHold(
+                        Self::count_hold_note_offset(offset_counter, hold_note),
+                    ),
+                    NoteData::FloorHold(hold_note) => {
+                        NoteData::FloorHold(Self::count_hold_note_offset(offset_counter, hold_note))
+                    }
+                    _ => n.data,
+                };
+                Note {
+                    data,
+                    time,
+                    x_position: n.x_position,
+                }
+            })
+            .collect()
+    }
+
+    fn count_hold_note_offset(
+        offset_counter: &TimeSignaturesOffsets,
+        mut hold_note: HoldNote,
+    ) -> HoldNote {
+        let end_time = Self::count_offset_seconds(offset_counter, &hold_note.end_time);
+        let control_points = hold_note
+            .control_points
+            .into_iter()
+            .map(|c| {
+                if let Some(control_point) = c {
+                    Some(Self::count_bezier_control_point_offset(
+                        offset_counter,
+                        control_point,
+                    ))
+                } else {
+                    c
+                }
+            })
+            .collect();
+
+        hold_note.end_time = end_time;
+        hold_note.control_points = control_points;
+        hold_note
+    }
+
+    fn count_bezier_control_point_offset(
+        offset_counter: &TimeSignaturesOffsets,
+        mut control_point: BezierControlPoint,
+    ) -> BezierControlPoint {
+        let time = Self::count_offset_seconds(offset_counter, &control_point.time);
+        control_point.time = time;
+        control_point
+    }
+
+    fn count_platform_offsets(
+        offset_counter: &TimeSignaturesOffsets,
+        platforms: Vec<Platform>,
+    ) -> Vec<Platform> {
+        platforms
+            .into_iter()
+            .map(|p| {
+                let start_time = Self::count_offset_seconds(offset_counter, &p.start_time);
+                let end_time = Self::count_offset_seconds(offset_counter, &p.end_time);
+                p.timing_points(start_time, end_time)
+            })
+            .collect()
+    }
+
+    /// Creates new `TimingPoint` with the `seconds` entry populated.
+    fn count_offset_seconds(
+        offset_counter: &TimeSignaturesOffsets,
+        time: &TimingPoint,
+    ) -> TimingPoint {
+        let seconds = offset_counter.offset_at_measure(time.measure.0 as _, time.measure.1);
+        time.clone().seconds(seconds)
     }
 
     fn parse_note(body_line: &BodyLine, current_measure: u32) -> Result<Note> {

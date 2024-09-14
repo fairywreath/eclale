@@ -14,7 +14,7 @@ pub(crate) struct MeasureData {
 pub(crate) struct TimeSignaturesOffsets {
     measures: Vec<MeasureData>,
 
-    /// Offsets in milliseconds indexed by measure,
+    /// Offsets in seconds indexed by measure,
     /// with each entry being (measure start offset, measure duration).
     measure_offsets: Vec<(f32, f32)>,
 }
@@ -48,12 +48,14 @@ impl TimeSignaturesOffsets {
         }
     }
 
-    pub(crate) fn offset_at_measure(&self, measure: usize, subdivision_index: u32) -> f32 {
+    /// Returns offset in seconds.
+    pub(crate) fn offset_at_measure(&self, measure: usize, subdivision_index: f32) -> f32 {
         let (offset, duration) = self.measure_offsets[measure];
         let subdivision = self.measures[measure].subdivision;
         offset + ((subdivision_index as f32 / subdivision as f32) as f32 * duration)
     }
 
+    /// Returns duration in seconds.
     pub(crate) fn duration_at_measure(&self, measure: usize) -> f32 {
         self.measure_offsets[measure].1
     }
