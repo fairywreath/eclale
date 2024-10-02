@@ -15,7 +15,8 @@ use winit::{
 };
 
 use lyzumu_audio::AudioSystem;
-use lyzumu_chart::parse::{ksh::KshParser, osu::OsuManiaParser};
+use lyzumu_chart::parse::lzm::LzmParser;
+use track_renderer::{TrackRenderer, TrackSettings};
 
 mod track_renderer;
 
@@ -34,17 +35,16 @@ fn main() -> Result<()> {
     // Parse chart file.
     let chart_file_path = &args[1];
     let chart_parent_dir = Path::new(chart_file_path).parent().unwrap_or(Path::new(""));
-
-    // Test KSH parsing.
-    let chart = KshParser::parse_file(chart_file_path)?;
+    let lzm_parser = LzmParser::new()?;
+    let chart = lzm_parser.parse_file(chart_file_path)?;
 
     // let chart = OsuManiaParser::parse_file(chart_file_path)?;
 
-    log::info!("Chart number of hit objects: {}", chart.hit_objects.len());
+    log::info!("Chart number of hit objects: {}", chart.notes.len());
 
     // Load audio.
     let mut audio_system = AudioSystem::new()?;
-    let audio_file_path = chart_parent_dir.join(&chart.info.audio_file_name);
+    let audio_file_path = chart_parent_dir.join(&chart.header.audio_filename);
     log::info!(
         "Audio file path: {}",
         &audio_file_path.clone().to_str().unwrap()
@@ -60,46 +60,18 @@ fn main() -> Result<()> {
         .with_position(dpi::PhysicalPosition::new(0, 0))
         .build(&event_loop)?;
 
+    let track_settings = TrackSettings { runner_speed: 25.0 };
+
     // Initialize renderer.
-    // let mut track_renderer = TrackRenderer::new(
-    //     window.window_handle()?.raw_window_handle()?,
-    //     window.display_handle()?.raw_display_handle()?,
-    // )?;
+    let mut track_renderer = TrackRenderer::new(
+        window.window_handle()?.raw_window_handle()?,
+        window.display_handle()?.raw_display_handle()?,
+        track_settings.clone(),
+        &chart,
+    )?;
     // let screen_dimensions = track_renderer.swapchain_extent();
-    //
+
     let screen_dimensions = Vector2::new(1920.0, 1080.0);
-
-    let runner_speed = 25.0 as f32;
-    //
-    // let mut renderer_hit_objects = Vec::new();
-    // // let num_lanes = chart.info.mode.
-    // let num_lanes = 4.0;
-    // let lane_width = 2.0 / num_lanes;
-    // let lane_x_offset = (lane_width / 2.0) - 1.0;
-    // chart.hit_objects.iter().for_each(|hit_object| {
-    //     // Osu specific, need to normalize this in chart format.
-    //     // let lane = (hit_object.position.0 * num_lanes / 512.0).floor();
-    //     let lane = hit_object.position.0;
-    //
-    //     let x_translation = lane_x_offset + (lane * lane_width);
-    //     let z_translation = hit_object.time / 1000.0 * runner_speed;
-    //     let renderer_hit_object = SceneHitObject {
-    //         transform: Matrix4::new_translation(&Vector3::new(x_translation, 0.0, z_translation)),
-    //         base_color: Vector4::new(1.0, 0.0, 0.0, 1.0),
-    //     };
-    //     renderer_hit_objects.push(renderer_hit_object);
-    // });
-    // let renderer_scene_data = TrackScene {
-    //     hit_object_mesh: Polyhedron::cuboid(0.4, 0.1, 0.2).into(),
-    //     // hit_object_mesh: Polyhedron::octahedron(0.3, 1.6).into(),
-    //     // hit_object_mesh: Torus::new(0.1, 0.04, 10, 10).to_mesh(),
-    //     // hit_object_mesh: SphereUv::new(0.2, 10, 10).generate_mesh(),
-    //     // hit_object_mesh: Capsule3dMeshBuilder::default().build(),
-    //     hit_objects: renderer_hit_objects,
-    // };
-    // track_renderer.load_scene(renderer_scene_data)?;
-
-    log::info!("Audio file name {}", &chart.info.audio_file_name);
 
     // Play audio.
     let sound_handle = audio_system.play_static_sound(sound_index)?;
@@ -125,11 +97,6 @@ fn main() -> Result<()> {
             // XXX: Use view and projection matrices that fit accordingly to the vulkan coord system. (?)
             * Matrix4::new_nonuniform_scaling(&Vector3::new(-1.0, 1.0, 1.0));
 
-    // let mut scene_constants = TrackUniformBufferData {
-    //     view_projection,
-    //     runner_transform: Matrix4::identity(),
-    // };
-    //
     event_loop.run(move |event, eltw| {
         eltw.set_control_flow(ControlFlow::Poll);
 
@@ -144,34 +111,15 @@ fn main() -> Result<()> {
                     let dt = now - last_render_time;
                     last_render_time = now;
 
-                    current_runner_position += dt.as_secs_f32() * runner_speed;
-
-                    // println!("DT: {}", dt.as_secs_f32());
                     let current_audio_position = sound_handle.position() as f32;
-                    if last_audio_position != current_audio_position {
-                        // println!(
-                        //     "last vs current sound position  {} {} {}, timer elapsed {} ",
-                        //     last_audio_position,
-                        //     current_audio_position,
-                        //     current_audio_position - last_audio_position,
-                        //     current_audio_position
-                        // );
-                        last_audio_position = current_audio_position;
-                    }
-
-                    let audio_dt = current_audio_position - last_audio_position;
+                    let _audio_dt = current_audio_position - last_audio_position;
                     last_audio_position = current_audio_position;
 
-                    // current_runner_position += audio_dt * runner_speed;
-                    // scene_constants.runner_transform = Matrix4::new_translation(&Vector3::new(
-                    //     0.0,
-                    //     0.0,
-                    //     -current_runner_position as _,
-                    // ));
-                    //
-                    // track_renderer.update_scene_constants(scene_constants.clone());
-                    //
-                    // track_renderer.render().unwrap();
+                    current_runner_position += dt.as_secs_f32() * track_settings.runner_speed;
+
+                    track_renderer.update_view_projection(view_projection);
+                    track_renderer.update_runner_position(current_runner_position);
+                    track_renderer.render().unwrap();
                 }
                 _ => (),
             },

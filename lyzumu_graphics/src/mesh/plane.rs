@@ -14,6 +14,7 @@ fn to_xz(v: Vector2<f32>) -> Vector3<f32> {
 }
 
 /// Creates points for a curve on the xz 3D axis given cubic bezier parameters.
+/// Points are represented as Vec2s in the xz axis.
 fn cubic_bezier_curve_points_xz(
     v0: Vector2<f32>,
     v1: Vector2<f32>,

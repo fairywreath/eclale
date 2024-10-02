@@ -1,9 +1,9 @@
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use gpu_allocator::MemoryLocation;
 use instanced::InstancedRenderer;
-use nalgebra::{Matrix4, Vector2, Vector3};
+use nalgebra::Vector2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::vulkan::{
@@ -16,117 +16,25 @@ use crate::vulkan::{
     vk,
 };
 
-use render_description::{
-    InstancedDrawData, InstancedType, RenderDescription, RenderPipelineDescription,
-};
+use render_description::{RenderDescription, RenderPipelineDescription};
 
 mod instanced;
 
 pub mod render_description;
-
-pub(crate) struct InstancedSingleVerticesGpuResources {
-    vertex_buffer_positions: Buffer,
-    index_buffer: Buffer,
-    storage_buffer_instances: Buffer,
-}
-
-pub(crate) struct InstancedDynamicVerticesGpuResources {
-    storage_buffer_vertex_positions: Buffer,
-    storage_buffer_indices: Buffer,
-    storage_buffer_instances: Buffer,
-}
-
-pub(crate) enum InstancedGpuResources {
-    SingleVertices(InstancedSingleVerticesGpuResources),
-    DynamicVertices(InstancedDynamicVerticesGpuResources),
-}
-
-pub(crate) fn create_instanced_gpu_resources(
-    device: &Arc<Device>,
-    draw_data: &InstancedDrawData,
-) -> Result<InstancedGpuResources> {
-    // XXX TODO: Make all buffers reside in GPU memory only.
-
-    let storage_buffer_instances = device.create_buffer(BufferDescriptor {
-        size: (draw_data.instance_data.len() * size_of::<u8>()) as u64,
-        usage_flags: vk::BufferUsageFlags::STORAGE_BUFFER,
-        memory_location: MemoryLocation::CpuToGpu,
-    })?;
-    storage_buffer_instances.write_data(&draw_data.instance_data)?;
-
-    let gpu_resources = match draw_data.instanced_type {
-        InstancedType::SingleVertices => {
-            let vertex_buffer_positions = device.create_buffer(BufferDescriptor {
-                size: (draw_data.vertices.len() * size_of::<Vector3<f32>>()) as u64,
-                usage_flags: vk::BufferUsageFlags::VERTEX_BUFFER,
-                memory_location: MemoryLocation::CpuToGpu,
-            })?;
-            vertex_buffer_positions.write_data(&draw_data.vertices)?;
-
-            let index_buffer = device.create_buffer(BufferDescriptor {
-                size: (draw_data.indices.len() * size_of::<u16>()) as u64,
-                usage_flags: vk::BufferUsageFlags::INDEX_BUFFER,
-                memory_location: MemoryLocation::CpuToGpu,
-            })?;
-            index_buffer.write_data(&draw_data.indices)?;
-
-            InstancedGpuResources::SingleVertices(InstancedSingleVerticesGpuResources {
-                vertex_buffer_positions,
-                index_buffer,
-                storage_buffer_instances,
-            })
-        }
-        InstancedType::DynamicVertices => {
-            let storage_buffer_vertex_positions = device.create_buffer(BufferDescriptor {
-                size: (draw_data.vertices.len() * size_of::<Vector3<f32>>()) as u64,
-                usage_flags: vk::BufferUsageFlags::STORAGE_BUFFER,
-                memory_location: MemoryLocation::CpuToGpu,
-            })?;
-            storage_buffer_vertex_positions.write_data(&draw_data.vertices)?;
-
-            let storage_buffer_indices = device.create_buffer(BufferDescriptor {
-                size: (draw_data.indices.len() * size_of::<u16>()) as u64,
-                usage_flags: vk::BufferUsageFlags::STORAGE_BUFFER,
-                memory_location: MemoryLocation::CpuToGpu,
-            })?;
-            storage_buffer_indices.write_data(&draw_data.indices)?;
-
-            InstancedGpuResources::DynamicVertices(InstancedDynamicVerticesGpuResources {
-                storage_buffer_vertex_positions,
-                storage_buffer_indices,
-                storage_buffer_instances,
-            })
-        }
-    };
-
-    Ok(gpu_resources)
-}
 
 pub(crate) struct SharedGpuResources {
     pub(crate) uniform_buffer_global: Buffer,
     pub(crate) image_depth: Image,
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct GlobalUniformBufferGpuData {
-    pub view_projection: Matrix4<f32>,
-    pub runner_transform: Matrix4<f32>,
-}
-
-const INSTANCED_SINGLE_VERTICES_DESCRIPTOR_LAYOUT_INDEX: usize = 0;
-const INSTANCED_DYNAMIC_VERTICES_DESCRIPTOR_LAYOUT_INDEX: usize = 1;
-
 pub struct Renderer {
     device: Arc<Device>,
 
-    uniform_buffer_global_data: GlobalUniformBufferGpuData,
     shared_gpu_resources: SharedGpuResources,
+    scene_uniform_data: Vec<u8>,
 
     graphics_pipelines: Vec<Pipeline>,
-    descriptor_set_layouts: Vec<Arc<DescriptorSetLayout>>,
-
     instanced_renderers: Vec<InstancedRenderer>,
-
     /// Contains index to `instanced_renderers` Vec, grouped by index to `graphics_pipeline` Vec.
     renderers_grouped_by_pipeline: Vec<Vec<usize>>,
 }
@@ -140,7 +48,7 @@ impl Renderer {
         let device = Arc::new(Device::new(window_handle, display_handle)?);
 
         let uniform_buffer_global = device.create_buffer(BufferDescriptor {
-            size: size_of::<GlobalUniformBufferGpuData>() as _,
+            size: render_description.scene_uniform_data_size,
             usage_flags: vk::BufferUsageFlags::UNIFORM_BUFFER,
             memory_location: MemoryLocation::CpuToGpu,
         })?;
@@ -150,6 +58,8 @@ impl Renderer {
             uniform_buffer_global,
             image_depth,
         };
+        let scene_uniform_data =
+            Vec::with_capacity(render_description.scene_uniform_data_size as _);
 
         let descriptor_set_layouts = Self::create_descriptor_set_layouts(&device)?;
         let graphics_pipelines = render_description
@@ -170,7 +80,7 @@ impl Renderer {
             .into_iter()
             .map(|draw_data| {
                 InstancedRenderer::new(
-                    device.clone(),
+                    &device,
                     draw_data,
                     descriptor_set_layouts[0].clone(),
                     &shared_gpu_resources,
@@ -178,19 +88,17 @@ impl Renderer {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let mut renderers_grouped_by_pipeline: Vec<Vec<usize>> =
-            Vec::with_capacity(graphics_pipelines.len());
+        let mut renderers_grouped_by_pipeline = vec![vec![]; graphics_pipelines.len()];
         for (index, renderer) in instanced_renderers.iter().enumerate() {
             renderers_grouped_by_pipeline[renderer.draw_data.pipeline_index].push(index);
         }
 
         Ok(Self {
             device,
-            uniform_buffer_global_data: GlobalUniformBufferGpuData::default(),
             shared_gpu_resources,
+            scene_uniform_data,
             instanced_renderers,
             graphics_pipelines,
-            descriptor_set_layouts,
             renderers_grouped_by_pipeline,
         })
     }
@@ -207,21 +115,16 @@ impl Renderer {
             .map(|d| device.create_shader_module(d))
             .collect::<Result<Vec<_>>>()?;
 
-        let (vertex_input_attributes, vertex_input_bindings) =
-            if let InstancedType::SingleVertices = render_pipeline_description.instanced_type {
-                (
-                    vec![vk::VertexInputAttributeDescription::default()
-                        .location(0)
-                        .binding(0)
-                        .format(vk::Format::R32G32B32_SFLOAT)],
-                    vec![vk::VertexInputBindingDescription::default()
-                        .binding(0)
-                        .stride(12)
-                        .input_rate(vk::VertexInputRate::VERTEX)],
-                )
-            } else {
-                (vec![], vec![])
-            };
+        let (vertex_input_attributes, vertex_input_bindings) = (
+            vec![vk::VertexInputAttributeDescription::default()
+                .location(0)
+                .binding(0)
+                .format(vk::Format::R32G32B32_SFLOAT)],
+            vec![vk::VertexInputBindingDescription::default()
+                .binding(0)
+                .stride(12)
+                .input_rate(vk::VertexInputRate::VERTEX)],
+        );
 
         let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
             .blend_enable(false)
@@ -256,7 +159,7 @@ impl Renderer {
     }
 
     fn create_descriptor_set_layouts(device: &Device) -> Result<Vec<Arc<DescriptorSetLayout>>> {
-        let instanced_single_vertices_layout_descriptor = DescriptorSetLayoutDescriptor {
+        let layout_descriptor = DescriptorSetLayoutDescriptor {
             bindings: vec![
                 DescriptorSetLayoutBinding::new()
                     .binding(0)
@@ -273,43 +176,9 @@ impl Renderer {
             binding_flags: None,
         };
         let instanced_single_vertices_layout =
-            device.create_descriptor_set_layout(instanced_single_vertices_layout_descriptor)?;
+            device.create_descriptor_set_layout(layout_descriptor)?;
 
-        // XXX TODO: Can just completely get rid of this since we can control the vertex and index offset.
-        //           The whole platform is just one big mesh.
-        let instanced_dynamic_vertices_layout_descriptor = DescriptorSetLayoutDescriptor {
-            bindings: vec![
-                DescriptorSetLayoutBinding::new()
-                    .binding(0)
-                    .descriptor_count(1)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX),
-                DescriptorSetLayoutBinding::new()
-                    .binding(1)
-                    .descriptor_count(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX),
-                DescriptorSetLayoutBinding::new()
-                    .binding(2)
-                    .descriptor_count(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX),
-                DescriptorSetLayoutBinding::new()
-                    .binding(3)
-                    .descriptor_count(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX),
-            ],
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            binding_flags: None,
-        };
-        let instanced_dynamic_vertices_layout =
-            device.create_descriptor_set_layout(instanced_dynamic_vertices_layout_descriptor)?;
-
-        Ok(vec![
-            Arc::new(instanced_single_vertices_layout),
-            Arc::new(instanced_dynamic_vertices_layout),
-        ])
+        Ok(vec![Arc::new(instanced_single_vertices_layout)])
     }
 
     fn create_image_depth(device: &Arc<Device>) -> Result<Image> {
@@ -330,8 +199,9 @@ impl Renderer {
         device.create_image(image_depth_desc)
     }
 
-    pub fn update_scene_constants(&mut self, scene_constants: GlobalUniformBufferGpuData) {
-        self.uniform_buffer_global_data = scene_constants;
+    pub fn update_scene_uniform_data(&mut self, data: &[u8]) {
+        self.scene_uniform_data.resize(data.len(), 0);
+        self.scene_uniform_data[..data.len()].copy_from_slice(data);
     }
 
     pub fn render(&mut self) -> Result<()> {
@@ -341,7 +211,7 @@ impl Renderer {
         //            as we are writing to it.
         self.shared_gpu_resources
             .uniform_buffer_global
-            .write_data(std::slice::from_ref(&self.uniform_buffer_global_data))?;
+            .write_data(&self.scene_uniform_data)?;
 
         let command_buffer = self.device.get_current_command_buffer()?;
 
@@ -357,8 +227,11 @@ impl Renderer {
         for (pipeline_index, renderers) in self.renderers_grouped_by_pipeline.iter().enumerate() {
             command_buffer.bind_pipeline_graphics(&self.graphics_pipelines[pipeline_index]);
             for renderer_index in renderers {
-                self.instanced_renderers[*renderer_index]
-                    .record_commands(&command_buffer, &self.graphics_pipelines[pipeline_index])?;
+                self.instanced_renderers[*renderer_index].record_commands(
+                    &command_buffer,
+                    &self.graphics_pipelines[pipeline_index],
+                    self.device.current_frame(),
+                )?;
             }
         }
 

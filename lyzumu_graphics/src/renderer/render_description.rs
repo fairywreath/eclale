@@ -6,20 +6,17 @@ use crate::vulkan::shader::ShaderModuleDescriptor;
 /// Describes how the gameplay scene is rendered.
 ///
 
+pub enum RenderingType {
+    Instanced,
+}
+
 pub struct RenderPipelineDescription {
-    pub instanced_type: InstancedType,
+    pub rendering_type: RenderingType,
     pub shader_modules: Vec<ShaderModuleDescriptor>,
 }
 
-pub enum InstancedType {
-    /// One set of vertices and indices for all instanced objects.
-    SingleVertices,
-    /// Different vertices and indices with same vertex and index count for all objects.
-    DynamicVertices,
-}
-
 pub struct InstancedDrawData {
-    pub instanced_type: InstancedType,
+    pub rendering_type: RenderingType,
 
     pub instance_data: Vec<u8>,
     pub instance_count: usize,
@@ -34,4 +31,5 @@ pub struct InstancedDrawData {
 pub struct RenderDescription {
     pub pipelines: Vec<RenderPipelineDescription>,
     pub instanced_draw_data: Vec<InstancedDrawData>,
+    pub scene_uniform_data_size: u64,
 }

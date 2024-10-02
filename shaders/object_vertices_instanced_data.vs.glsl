@@ -10,7 +10,6 @@ struct HitInstanceData
 {
     mat4 model;
     vec4 color;
-    uint applyRunnerTransform;
 };
 
 layout(std140, binding = 0) uniform GlobalSceneUbo
@@ -20,7 +19,6 @@ layout(std140, binding = 0) uniform GlobalSceneUbo
 }
 global;
 
-
 layout(std430, binding = 1) readonly buffer HitInstanceDataSbo
 {
     HitInstanceData instances[];
@@ -28,16 +26,11 @@ layout(std430, binding = 1) readonly buffer HitInstanceDataSbo
 
 void main()
 {
-    HitInstanceData instanceData = instances[gl_InstanceIndex];
+    uint verticesPerInstance = gl_BaseInstance >> 16;
+    HitInstanceData instanceData = instances[gl_VertexIndex % verticesPerInstance];
 
-
-    gl_Position = global.viewProj * global.runnerTransform * instanceData.model * vec4(position, 1.0);
-
-    // XXX: Remove this divergence
-    if (instanceData.applyRunnerTransform == 0)
-    {
-        gl_Position = global.viewProj * instanceData.model * vec4(position, 1.0);
-    }
+    // gl_Position = global.viewProj * global.runnerTransform * instanceData.model * vec4(position, 1.0);
+    gl_Position = global.viewProj * global.runnerTransform * vec4(position, 1.0);
 
     color = instanceData.color;
 }

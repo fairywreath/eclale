@@ -1,7 +1,7 @@
 use crate::TimeSignature;
 
 /// Contains all required musical and rhythm data for a single measure/bar to calculate raw time offsets.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub(crate) struct MeasureData {
     pub(crate) time_signature: TimeSignature,
     pub(crate) tempo: u32,
@@ -21,6 +21,8 @@ pub(crate) struct TimeSignaturesOffsets {
 
 impl TimeSignaturesOffsets {
     pub(crate) fn new(measures: Vec<MeasureData>, music_offset: f32) -> Self {
+        println!("Measure data: {:#?}", &measures);
+
         let mut current_measure_offset = music_offset;
         let measure_offsets = measures
             .iter()
@@ -51,8 +53,11 @@ impl TimeSignaturesOffsets {
     /// Returns offset in seconds.
     pub(crate) fn offset_at_measure(&self, measure: usize, subdivision_index: f32) -> f32 {
         let (offset, duration) = self.measure_offsets[measure];
+
+        // Index starts at 1.
+        let index = subdivision_index as f32 - 1.0;
         let subdivision = self.measures[measure].subdivision;
-        offset + ((subdivision_index as f32 / subdivision as f32) as f32 * duration)
+        offset + (index / subdivision as f32) as f32 * duration
     }
 
     /// Returns duration in seconds.

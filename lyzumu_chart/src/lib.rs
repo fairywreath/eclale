@@ -9,11 +9,10 @@ pub(crate) struct TimeSignature {
     pub(crate) note_value: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct TimingPoint {
     pub(crate) measure: (u32, f32),
     pub seconds: Option<f32>,
-    pub z_position: Option<f32>,
 }
 
 impl TimingPoint {
@@ -28,13 +27,15 @@ impl TimingPoint {
         Self {
             measure: (measure, beat),
             seconds: None,
-            z_position: None,
         }
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Header {
+    pub title: String,
+    pub jacket_filename: String,
+
     pub audio_filename: String,
     /// Offset to start of audio in seconds.
     pub audio_offset: f32,
@@ -43,17 +44,19 @@ pub struct Header {
     pub(crate) default_time_signature: TimeSignature,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
 pub struct BezierControlPoint {
     pub x_position: f32,
     pub time: TimingPoint,
 }
 
+#[derive(Clone, Debug)]
 pub struct Platform {
     pub start_time: TimingPoint,
     pub end_time: TimingPoint,
 
     /// Vertices for the "quad" platform in order of
-    /// bottom_left, bottom_right, top_left, top_right.
+    /// bottom_left, top_left, bottom_right, top_right.
     pub vertices_x_positions: (f32, f32, f32, f32),
 
     // Left and right bezier control points.
@@ -77,6 +80,7 @@ impl Platform {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum BasicNoteType {
     Basic1,
     Basic2,
@@ -84,6 +88,7 @@ pub enum BasicNoteType {
     Basic4,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum EvadeNoteType {
     Evade1,
     Evade2,
@@ -91,26 +96,31 @@ pub enum EvadeNoteType {
     Evade4,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum ContactNoteType {
     Contact1,
     Contact2,
 }
 
+#[derive(Clone, Debug)]
 pub struct HoldNote {
     pub end_time: TimingPoint,
     pub control_points: Vec<Option<BezierControlPoint>>,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum FlickDirection {
     Left,
     Right,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct FlickNote {
     pub direction: FlickDirection,
     pub end_x_position: f32,
 }
 
+#[derive(Clone, Debug)]
 pub enum NoteData {
     Basic(BasicNoteType),
     BasicHold((BasicNoteType, HoldNote)),
@@ -123,12 +133,14 @@ pub enum NoteData {
     Flick(FlickNote),
 }
 
+#[derive(Clone, Debug)]
 pub struct Note {
     pub data: NoteData,
     pub time: TimingPoint,
     pub x_position: f32,
 }
 
+#[derive(Clone, Debug)]
 pub struct Chart {
     pub header: Header,
     pub platforms: Vec<Platform>,

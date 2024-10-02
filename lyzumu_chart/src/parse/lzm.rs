@@ -8,6 +8,8 @@ use crate::{
     FlickNote, Header, HoldNote, Note, NoteData, Platform, TimeSignature, TimingPoint,
 };
 
+const COMMENT_STR: &str = "//";
+
 enum Section {
     Header,
     ChartBody,
@@ -82,7 +84,7 @@ impl LzmParser {
     pub fn new() -> Result<Self> {
         Ok(Self {
             regex_section_tag: Regex::new(r"<(.*?)>")?,
-            regex_option: Regex::new(r"(\w+)=(\w+)")?,
+            regex_option: Regex::new(r"(\w+)=(\S+)")?,
             regex_body_line: Regex::new(
                 r"\[(?P<body_type>[^\]]+)\] \((?P<beat>[^\)]+)\) \|(?P<position>[^\|]+)\|(?: \{(?P<additional_options>[^\}]*)\})?",
             )?,
@@ -101,13 +103,17 @@ impl LzmParser {
         for line in read_lines(filename)?.flatten() {
             let line = line.trim();
 
-            if let Some(new_section) = self.parse_section_tag(line) {
+            if line.starts_with(COMMENT_STR) || line.is_empty() {
+                continue;
+            } else if let Some(new_section) = self.parse_section_tag(line) {
                 current_section = new_section
             } else {
                 match current_section {
                     Section::Header => {
                         if let Some((key, value)) = self.parse_option(line).into_iter().next() {
                             match key.as_str() {
+                                "title" => header.title = value,
+                                "jacket_filename" => header.jacket_filename = value,
                                 "audio_filename" => header.audio_filename = value,
                                 "audio_offset" => header.audio_offset = value.parse()?,
                                 "default_tempo" => {
@@ -168,6 +174,8 @@ impl LzmParser {
         let offset_counter = TimeSignaturesOffsets::new(measures, header.audio_offset);
         let notes = Self::count_note_offsets(&offset_counter, notes);
         let platforms = Self::count_platform_offsets(&offset_counter, platforms);
+
+        println!("{:#?}", &notes);
 
         Ok(Chart {
             header,
@@ -372,7 +380,8 @@ impl LzmParser {
         // Ensure that we have exactly two parts
         if parts.len() != 2 {
             return Err(anyhow::anyhow!(
-                "Invalid time signature format: expected 'numerator/denominator'"
+                "Invalid time signature {}: expected 'numerator/denominator'",
+                input
             ));
         }
 
