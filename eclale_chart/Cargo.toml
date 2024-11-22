@@ -1,0 +1,11 @@
+[package]
+name = "eclale_chart"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+log = "0.4.22"
+regex = "1.10.6"
+
+ogkr = { version = "0.1.0", path = "../../ogkr" }

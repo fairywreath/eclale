@@ -1,3 +1,3 @@
 [workspace]
-members = ["lyzumu", "lyzumu_audio", "lyzumu_chart", "lyzumu_graphics"]
+members = ["eclale", "eclale_audio", "eclale_chart", "eclale_graphics"]
 resolver = "2"
