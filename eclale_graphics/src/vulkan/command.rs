@@ -210,6 +210,18 @@ impl CommandBuffer {
         }
     }
 
+    pub fn set_viewport(&self, viewports: &[vk::Viewport]) {
+        unsafe {
+            self.device.raw.cmd_set_viewport(self.raw, 0, viewports);
+        }
+    }
+
+    pub fn set_scissor(&self, scissors: &[vk::Rect2D]) {
+        unsafe {
+            self.device.raw.cmd_set_scissor(self.raw, 0, scissors);
+        }
+    }
+
     pub fn bind_pipeline_graphics(&self, pipeline: &Pipeline) {
         unsafe {
             self.device.raw.cmd_bind_pipeline(

@@ -4,6 +4,7 @@
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in uint objectIndex;
+layout(location = 2) out float distanceToCenter;
 
 layout(location = 0) out vec4 color;
 
@@ -26,9 +27,10 @@ layout(std430, binding = 1) readonly buffer ObjectDataSsbo
     ObjectData allObjectData[];
 };
 
+float distancesToCenter[4] = {-1.0, 1.0, -1.0, 1.0};
+
 void main()
 {
-    // ObjectData objectData = allObjectData[2];
     ObjectData objectData = allObjectData[objectIndex];
 
     // XXX FIXME: properly set the model matrix in cpu.
@@ -37,5 +39,6 @@ void main()
     gl_Position = global.viewProj * global.runnerTransform * vec4(position, 1.0);
 
     color = objectData.color;
-    // color = vec4(0.5, 0.5, 0.5, 1.0);
+
+    distanceToCenter = distancesToCenter[gl_VertexIndex % 4];
 }

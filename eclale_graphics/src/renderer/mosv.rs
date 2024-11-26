@@ -72,11 +72,13 @@ pub(crate) struct MOSVRenderer {
     pub(crate) draw_data: MOSVDrawData,
     gpu_resources: GpuResources,
     descriptor_set: DescriptorSet,
+
+    device: Arc<Device>,
 }
 
 impl MOSVRenderer {
     pub(crate) fn new(
-        device: &Arc<Device>,
+        device: Arc<Device>,
         draw_data: MOSVDrawData,
         descriptor_set_layout: Arc<DescriptorSetLayout>,
         shared_resources: &SharedGpuResources,
@@ -93,6 +95,7 @@ impl MOSVRenderer {
             draw_data,
             gpu_resources,
             descriptor_set,
+            device,
         })
     }
 
@@ -152,5 +155,17 @@ impl MOSVRenderer {
         device.update_descriptor_set(descriptor_set, &descriptor_binding_writes)?;
 
         Ok(())
+    }
+
+    pub(crate) fn update_shared_gpu_resources(
+        &self,
+        shared_resources: &SharedGpuResources,
+    ) -> Result<()> {
+        Self::update_descriptor_set(
+            &self.device,
+            &self.descriptor_set,
+            &self.gpu_resources,
+            shared_resources,
+        )
     }
 }

@@ -81,46 +81,82 @@ impl Plane {
         assert!(side_a_count >= 2);
         assert!(side_b_count >= 2);
 
-        let vertices = {
-            side_a_vertices.extend(side_b_vertices);
-            side_a_vertices
-        };
+        // let vertices = {
+        //     side_a_vertices.extend(side_b_vertices);
+        //     side_a_vertices
+        // };
 
-        let mut current_side_a_offset = 0 as u16;
-        let mut current_side_b_offset = side_a_count;
+        // XXX: Make this a separate function.
+        // We duplicate some vertices here so gl_VertexIndex can signify whether a vertex is
+        // at the left side or right side.
+        let mut vertices = Vec::with_capacity(side_a_vertices.len() + side_b_vertices.len());
+        let mut a_iter = side_a_vertices.into_iter();
+        let mut b_iter = side_b_vertices.into_iter();
+        let mut last_a_index = 0;
+        let mut last_b_index = 0;
+
+        for (a, b) in a_iter.by_ref().zip(b_iter.by_ref()) {
+            last_a_index = vertices.len();
+            vertices.push(a);
+            last_b_index = vertices.len();
+            vertices.push(b);
+        }
+        for a in a_iter {
+            vertices.push(a);
+            vertices.push(vertices[last_b_index]);
+        }
+        for b in b_iter {
+            vertices.push(vertices[last_a_index]);
+            vertices.push(b);
+        }
+
+        assert!(vertices.len() >= 4);
+        assert!(vertices.len() % 2 == 0);
 
         let mut indices = Vec::new();
-        for i in 1..side_a_count {
-            // Side b's last vertex is reached.
-            if i >= side_b_count {
-                break;
-            }
-
-            indices.push((i - 1) as _);
+        for i in (0..vertices.len() as u16 - 2).step_by(2) {
             indices.push(i);
-            indices.push(i - 1 + side_a_count);
+            indices.push(i + 1);
+            indices.push(i + 2);
 
-            indices.push(i - 1 + side_a_count);
-            indices.push(i);
-            indices.push(i + side_a_count);
-
-            current_side_a_offset = i;
-            current_side_b_offset = i + side_a_count;
+            indices.push(i + 1);
+            indices.push(i + 2);
+            indices.push(i + 3);
         }
 
-        // If we have remaining side a vertices to add, make triangles with the last vertex of side b.
-        for i in current_side_a_offset + 1..side_a_count {
-            indices.push(i - 1);
-            indices.push(i);
-            indices.push(side_a_count + side_b_count - 1);
-        }
-
-        // If we have remaining side b vertices to add, make triangles with the last vertex of side a.
-        for i in current_side_b_offset + 1..side_a_count + side_b_count {
-            indices.push(i);
-            indices.push(i - 1);
-            indices.push(side_a_count - 1);
-        }
+        // let mut current_side_a_offset = 0 as u16;
+        // let mut current_side_b_offset = side_a_count;
+        // for i in 1..side_a_count {
+        //     // Side b's last vertex is reached.
+        //     if i >= side_b_count {
+        //         break;
+        //     }
+        //
+        //     indices.push((i - 1) as _);
+        //     indices.push(i);
+        //     indices.push(i - 1 + side_a_count);
+        //
+        //     indices.push(i - 1 + side_a_count);
+        //     indices.push(i);
+        //     indices.push(i + side_a_count);
+        //
+        //     current_side_a_offset = i;
+        //     current_side_b_offset = i + side_a_count;
+        // }
+        //
+        // // If we have remaining side a vertices to add, make triangles with the last vertex of side b.
+        // for i in current_side_a_offset + 1..side_a_count {
+        //     indices.push(i - 1);
+        //     indices.push(i);
+        //     indices.push(side_a_count + side_b_count - 1);
+        // }
+        //
+        // // If we have remaining side b vertices to add, make triangles with the last vertex of side a.
+        // for i in current_side_b_offset + 1..side_a_count + side_b_count {
+        //     indices.push(i);
+        //     indices.push(i - 1);
+        //     indices.push(side_a_count - 1);
+        // }
 
         Self { vertices, indices }
     }

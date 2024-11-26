@@ -699,6 +699,10 @@ impl Device {
             .sample_shading_enable(false)
             .min_sample_shading(1.0);
 
+        let dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+
         let mut pipeline_rendering_info = vk::PipelineRenderingCreateInfo::default()
             .view_mask(0)
             .color_attachment_formats(&desc.color_attachment_formats)
@@ -717,6 +721,7 @@ impl Device {
             .depth_stencil_state(&vulkan_depth_stencil_state)
             .multisample_state(&multisample_state)
             .rasterization_state(&vulkan_rasterization_state)
+            .dynamic_state(&dynamic_state)
             .layout(pipeline_layout)
             .push_next(&mut pipeline_rendering_info);
 

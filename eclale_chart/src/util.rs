@@ -126,7 +126,7 @@ impl XPositionCalculator {
 
         // XXX  FIXME: Properly adjust this based on chart settings.
         // XXX TODO:
-        // abs_position / 20.0 + (offset_position / self.resolution / 20.0)
-        abs_position / 25.0
+        abs_position / 25.0 + (offset_position / self.resolution / 25.0)
+        // abs_position / 25.0
     }
 }

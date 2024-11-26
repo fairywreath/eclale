@@ -23,12 +23,18 @@ pub struct Platform {
 
 /// Generic unsigned integer that can be identified differently based on chart type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct LaneType(u16);
+pub struct LaneType(pub u16);
+
+#[derive(Clone, Debug)]
+pub struct Lane {
+    pub points: Vec<TrackPosition>,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Track {
     pub platforms: Vec<Platform>,
-    pub lanes: HashMap<LaneType, Vec<TrackPosition>>,
+    // XXX TODO: Have dedicated type Lanes and Lane.
+    pub lanes: HashMap<LaneType, Vec<Lane>>,
 }
 
 /// Generic unsigned integer that can be identified differently based on chart type.

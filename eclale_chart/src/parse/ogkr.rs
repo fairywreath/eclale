@@ -16,8 +16,8 @@ use ogkr::{
 use crate::{
     util::{MeasureCompositionData, XPositionCalculator, ZPosition, ZPositionCalculator},
     BpmChange, Chart, ChartData, Composition, ContactNote, ContactNoteType, EvadeNoteType,
-    FlickDirection, FlickNote, Header, HitNote, HitNoteType, HoldNote, LaneType, Metadata, Notes,
-    Platform, Soflan, Time, TimeSignature, TimeSignatureChange, Track, TrackPosition,
+    FlickDirection, FlickNote, Header, HitNote, HitNoteType, HoldNote, Lane, LaneType, Metadata,
+    Notes, Platform, Soflan, Time, TimeSignature, TimeSignatureChange, Track, TrackPosition,
 };
 
 impl From<ogkr_analysis::MeterChange> for TimeSignature {
@@ -214,11 +214,11 @@ impl OgkrChartCreator {
             .collect()
     }
 
-    fn create_points_from_lanes(
+    fn create_single_lane(
         &self,
         lanes: &BTreeMap<ogkr_analysis::TimingPoint, ogkr_analysis::LaneId>,
-    ) -> Vec<TrackPosition> {
-        lanes
+    ) -> Lane {
+        let points = lanes
             .iter()
             .map(|(_, lane_id)| {
                 // XXX TODO: Properly handle unwrap here.
@@ -227,13 +227,36 @@ impl OgkrChartCreator {
                 self.create_points_from_lane(lane)
             })
             .flatten()
+            .collect();
+
+        Lane { points }
+    }
+
+    fn create_lanes(
+        &self,
+        lanes: &BTreeMap<ogkr_analysis::TimingPoint, Vec<ogkr_analysis::LaneId>>,
+    ) -> Vec<Lane> {
+        lanes
+            .iter()
+            .map(|(_, lane_ids)| {
+                lane_ids
+                    .iter()
+                    .map(|lane_id| {
+                        // XXX TODO: Properly handle unwrap here.
+                        let lane = self.ogkr.track.get_lane(*lane_id).unwrap();
+                        let points = self.create_points_from_lane(lane);
+                        Lane { points }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .flatten()
             .collect()
     }
 
     fn create_platform(&self) -> Platform {
         let track = &self.ogkr.track;
-        let points_left = self.create_points_from_lanes(&track.walls_left);
-        let points_right = self.create_points_from_lanes(&track.walls_right);
+        let points_left = self.create_single_lane(&track.walls_left).points;
+        let points_right = self.create_single_lane(&track.walls_right).points;
 
         Platform {
             points_left,
@@ -248,19 +271,19 @@ impl OgkrChartCreator {
         let track = &self.ogkr.track;
         lanes.insert(
             ogkr_analysis::LaneType::Left.into(),
-            self.create_points_from_lanes(&track.lanes_left),
+            self.create_lanes(&track.lanes_left),
         );
         lanes.insert(
             ogkr_analysis::LaneType::Center.into(),
-            self.create_points_from_lanes(&track.lanes_center),
+            self.create_lanes(&track.lanes_center),
         );
         lanes.insert(
             ogkr_analysis::LaneType::Right.into(),
-            self.create_points_from_lanes(&track.lanes_right),
+            self.create_lanes(&track.lanes_right),
         );
         lanes.insert(
             ogkr_analysis::LaneType::Enemy.into(),
-            self.create_points_from_lanes(&track.enemy_lanes),
+            self.create_lanes(&track.enemy_lanes),
         );
 
         Track { platforms, lanes }

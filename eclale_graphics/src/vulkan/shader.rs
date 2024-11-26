@@ -144,9 +144,7 @@ fn compile_shader_through_glslangvalidator_cli(
     let command_output = Command::new(command_name)
         .arg(temp_file_name)
         .arg("-V")
-        // XXX FIXME: Using 1.3 restricts the exeuction mode to LocalSizeID, this is presumably a bug(?). Use
-        // vulkan1.2 for now.
-        .args(["--target-env", "vulkan1.2"])
+        .args(["--target-env", "vulkan1.3"])
         .args(["-o", destination_binary_file_name])
         .args(["-S", shader_stage.to_glslang_compiler_extension().as_str()])
         .args(["--D", shader_stage.to_glslang_stage_defines().as_str()])
@@ -169,7 +167,7 @@ fn compile_shader_through_glslangvalidator_cli(
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShaderModuleDescriptor {
     pub source_file_name: String,
     pub shader_stage: ShaderStage,

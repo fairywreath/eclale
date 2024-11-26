@@ -72,6 +72,7 @@ impl ObjectInstanceGpuData {
     }
 
     fn from_platform_instance(instance: &PlatformInstance) -> Self {
+        assert!(instance.z_start_position == 0.0);
         Self {
             transform: Matrix4::new_translation(&Vector3::new(0.0, 0.0, instance.z_start_position)),
             base_color: instance.base_color,
@@ -153,7 +154,6 @@ impl RenderMeshes {
 struct RenderPipelines;
 
 impl RenderPipelines {
-    // XXX TODO: Remove hardcoded values here, have it configurable externally.
     fn instanced() -> RenderPipelineDescription {
         RenderPipelineDescription {
             rendering_type: RenderingType::Instanced,
@@ -170,57 +170,38 @@ impl RenderPipelines {
         }
     }
 
-    // Different set of vertices for each instance. Each instance has the same amount of vertices.
-    fn vertices_instanced() -> RenderPipelineDescription {
-        RenderPipelineDescription {
-            rendering_type: RenderingType::Instanced,
-            shader_modules: vec![
-                ShaderModuleDescriptor {
-                    source_file_name: String::from(
-                        "shaders/object_vertices_instanced_data.vs.glsl",
-                    ),
-                    shader_stage: ShaderStage::Vertex,
-                },
-                ShaderModuleDescriptor {
-                    source_file_name: String::from("shaders/object_instanced.fs.glsl"),
-                    shader_stage: ShaderStage::Fragment,
-                },
-            ],
-        }
-    }
-
     // Multiple objects and one vertex stream for all objects' vertex data.
-    fn multiple_objects_single_vertex_data() -> RenderPipelineDescription {
+    fn mosv_planes_smooth() -> RenderPipelineDescription {
         RenderPipelineDescription {
             rendering_type: RenderingType::MultipleObjectsSingleVertexData,
             shader_modules: vec![
                 ShaderModuleDescriptor {
-                    source_file_name: String::from("shaders/object_vertices_1.vs.glsl"),
+                    source_file_name: String::from("shaders/object_vertices_smooth_1.vs.glsl"),
                     shader_stage: ShaderStage::Vertex,
                 },
                 ShaderModuleDescriptor {
-                    source_file_name: String::from("shaders/object_vertices_1.fs.glsl"),
+                    source_file_name: String::from("shaders/object_vertices_smooth_1.fs.glsl"),
                     shader_stage: ShaderStage::Fragment,
                 },
             ],
         }
     }
 
-    // fn line_planes() -> RenderPipelineDescription {
-    //     RenderPipelineDescription {
-    //         rendering_type: RenderingType::Instanced,
-    //         shader_modules: vec![
-    //             ShaderModuleDescriptor {
-    //                 source_file_name: String::from("shaders/line_planes.vs.glsl"),
-    //                 shader_stage: ShaderStage::Vertex,
-    //             },
-    //             ShaderModuleDescriptor {
-    //                 source_file_name: String::from("shaders/line_planes.fs.glsl"),
-    //                 shader_stage: ShaderStage::Fragment,
-    //             },
-    //         ],
-    //     }
-    // }
+    fn mosv_lines_smooth() -> RenderPipelineDescription {
+        RenderPipelineDescription {
+            rendering_type: RenderingType::MultipleObjectsSingleVertexData,
+            shader_modules: vec![
+                ShaderModuleDescriptor {
+                    source_file_name: String::from("shaders/object_vertices_smooth_2.vs.glsl"),
+                    shader_stage: ShaderStage::Vertex,
+                },
+                ShaderModuleDescriptor {
+                    source_file_name: String::from("shaders/object_vertices_smooth_2.fs.glsl"),
+                    shader_stage: ShaderStage::Fragment,
+                },
+            ],
+        }
+    }
 }
 
 struct RenderDescriptionCreator {
@@ -246,6 +227,7 @@ impl RenderDescriptionCreator {
 
     fn add_pipeline(&mut self, pipeline: RenderPipelineDescription) -> usize {
         self.pipelines.push(pipeline);
+        println!("Returning pipeline index {}", self.pipelines.len() - 1);
         self.pipelines.len() - 1
     }
 
@@ -268,7 +250,7 @@ impl RenderDescriptionCreator {
         })
     }
 
-    fn add_mosv_draw_Data(
+    fn add_mosv_draw_data(
         &mut self,
         pipeline_index: usize,
         mesh: Mesh,
@@ -292,59 +274,44 @@ impl RenderDescriptionCreator {
     }
 
     fn create(mut self) -> RenderDescription {
-        let instanced_pipeline_index = self.add_pipeline(RenderPipelines::instanced());
-        let vertices_instanced_pipeline_index =
-            self.add_pipeline(RenderPipelines::vertices_instanced());
-        let pipeline_index_mosv =
-            self.add_pipeline(RenderPipelines::multiple_objects_single_vertex_data());
-
-        // println!("{:#?}", &self.description.notes_hit);
-
-        log::info!("Number of hit notes {}", self.description.notes_hit.len());
-        log::info!(
-            "Number of contact notes {}",
-            self.description.notes_contact.len()
-        );
-        log::info!(
-            "Number of flick notes {}",
-            self.description.notes_flick.len()
-        );
+        let pipeline_index_instanced = self.add_pipeline(RenderPipelines::instanced());
+        let pipeline_index_mosv_planes = self.add_pipeline(RenderPipelines::mosv_planes_smooth());
+        let pipeline_index_mosv_lines = self.add_pipeline(RenderPipelines::mosv_lines_smooth());
 
         self.add_objects_instanced_draw_data(
             &ObjectInstanceGpuData::from_note_instances(&self.description.notes_hit),
             self.meshes.hit(),
-            instanced_pipeline_index,
+            pipeline_index_instanced,
         );
         self.add_objects_instanced_draw_data(
             &ObjectInstanceGpuData::from_note_instances(&self.description.notes_contact),
             self.meshes.contact(),
-            instanced_pipeline_index,
+            pipeline_index_instanced,
         );
         self.add_objects_instanced_draw_data(
             &ObjectInstanceGpuData::from_note_instances(&self.description.notes_flick),
             self.meshes.flick(),
-            instanced_pipeline_index,
+            pipeline_index_instanced,
         );
 
         self.add_objects_instanced_draw_data(
             &ObjectInstanceGpuData::from_platform_instances(&self.description.platform_instances),
             self.description.platform_mesh.clone(),
-            vertices_instanced_pipeline_index,
+            pipeline_index_instanced,
         );
 
-        // self.add_objects_instanced_draw_data(
-        //     &ObjectInstanceGpuData::from_platform_instances(&self.description.hold_notes.objects),
-        //     self.description.hold_notes.mesh.clone(),
-        //     vertices_instanced_pipeline_index,
-        //     // pipeline_index_mosv,
-        // );
-
-        self.add_mosv_draw_Data(
-            pipeline_index_mosv,
+        self.add_mosv_draw_data(
+            pipeline_index_mosv_planes,
             self.description.hold_notes.mesh.clone(),
             &ObjectInstanceGpuData::from_platform_instances(&self.description.hold_notes.objects),
-            // XXX TODO: remove this clone.
             &self.description.hold_notes.objects_indices.clone(),
+        );
+
+        self.add_mosv_draw_data(
+            pipeline_index_mosv_lines,
+            self.description.lanes.mesh.clone(),
+            &ObjectInstanceGpuData::from_platform_instances(&self.description.lanes.objects),
+            &self.description.lanes.objects_indices.clone(),
         );
 
         RenderDescription {
@@ -370,42 +337,8 @@ impl TrackRenderer {
         track_description: TrackDescription,
     ) -> Result<Self> {
         let render_description = RenderDescriptionCreator::new(track_description.clone()).create();
-        let mut renderer =
-            Renderer::new(window_handle, display_handle, render_description.clone())?;
+        let renderer = Renderer::new(window_handle, display_handle, render_description.clone())?;
 
-        // XXX FIXME: Properly query/store these magic draw data index values somewhere.
-        let platforms_draw_data_index = 3;
-        renderer.set_instanced_renderer_draw_indexed_command(
-            platforms_draw_data_index,
-            vk::DrawIndexedIndirectCommand::default()
-                .index_count(
-                    render_description.instanced_draw_data[platforms_draw_data_index]
-                        .indices
-                        .len() as _,
-                )
-                .instance_count(
-                    render_description.instanced_draw_data[platforms_draw_data_index].instance_count
-                        as _,
-                )
-                .first_instance(track_description.platform_mesh.vertices.len() as _),
-        );
-        //
-        // let hold_notes_draw_data_index = 4;
-        // renderer.set_instanced_renderer_draw_indexed_command(
-        //     hold_notes_draw_data_index,
-        //     vk::DrawIndexedIndirectCommand::default()
-        //         .index_count(
-        //             render_description.instanced_draw_data[hold_notes_draw_data_index]
-        //                 .indices
-        //                 .len() as _,
-        //         )
-        //         .instance_count(
-        //             render_description.instanced_draw_data[hold_notes_draw_data_index]
-        //                 .instance_count as _,
-        //         )
-        //         .first_instance(track_description.hold_notes.mesh.vertices.len() as _),
-        // );
-        //
         Ok(Self {
             renderer,
             track_description,

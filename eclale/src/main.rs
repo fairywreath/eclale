@@ -52,7 +52,8 @@ fn main() -> Result<()> {
 
     // println!("{:#?}", &chart.data.notes.hits);
 
-    let chart_speed = 3.0;
+    let chart_speed = 2.0;
+    // let chart_speed = 0.2;
     let runner_speed = 20.0;
 
     let render_track_settings = TrackSettings { runner_speed };

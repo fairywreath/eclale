@@ -72,6 +72,7 @@ impl Renderer {
             .pipelines
             .into_iter()
             .map(|p| {
+                println!("{:#?}", &p);
                 Self::create_graphics_pipeline(
                     &device,
                     descriptor_set_layouts[0].clone(),
@@ -86,7 +87,7 @@ impl Renderer {
             .into_iter()
             .map(|draw_data| {
                 InstancedRenderer::new(
-                    &device,
+                    device.clone(),
                     draw_data,
                     descriptor_set_layouts[0].clone(),
                     &shared_gpu_resources,
@@ -109,7 +110,7 @@ impl Renderer {
             .into_iter()
             .map(|draw_data| {
                 MOSVRenderer::new(
-                    &device,
+                    device.clone(),
                     draw_data,
                     descriptor_set_layouts[0].clone(),
                     &shared_gpu_resources,
@@ -270,6 +271,11 @@ impl Renderer {
 
             memory_location: MemoryLocation::GpuOnly,
         };
+        log::debug!(
+            "Creating depth image with extent {} x {}",
+            image_depth_desc.width,
+            image_depth_desc.height
+        );
         device.create_image(image_depth_desc)
     }
 
@@ -281,11 +287,28 @@ impl Renderer {
     pub fn frame_begin(&mut self) -> Result<()> {
         self.device.frame_begin()?;
 
+        self.check_and_handle_swapchain_recreation()?;
+
         // XXX FIXME: may be dangerous as uniform buffer may still be read in current frame's draws
         //            as we are writing to it.
         self.shared_gpu_resources
             .uniform_buffer_global
             .write_data(&self.scene_uniform_data)?;
+
+        Ok(())
+    }
+
+    fn check_and_handle_swapchain_recreation(&mut self) -> Result<()> {
+        if let Some(_) = self.device.was_swapchain_recreated() {
+            self.shared_gpu_resources.image_depth = Self::create_image_depth(&self.device)?;
+
+            for renderer in &self.instanced_renderers {
+                renderer.update_shared_gpu_resources(&self.shared_gpu_resources)?;
+            }
+            for renderer in &self.mosv_renderers {
+                renderer.update_shared_gpu_resources(&self.shared_gpu_resources)?;
+            }
+        }
 
         Ok(())
     }
@@ -306,8 +329,38 @@ impl Renderer {
             .command_transition_swapchain_image_layout_to_present(&command_buffer);
     }
 
-    pub fn bind_graphics_pipeline(&self, command_buffer: &CommandBuffer, pipeline_index: usize) {
+    pub fn command_set_pipeline_dynamic_states(&self, command_buffer: &CommandBuffer) {
+        let extent = self.device.swapchain_extent();
+        let viewport = vk::Viewport::default()
+            .x(0.0)
+            .y(0.0)
+            .width(extent.width as _)
+            .height(extent.height as _)
+            .min_depth(0.0)
+            .max_depth(1.0);
+        let scissor = vk::Rect2D::default()
+            .offset(vk::Offset2D::default().x(0).y(0))
+            .extent(extent);
+
+        command_buffer.set_viewport(std::slice::from_ref(&viewport));
+        command_buffer.set_scissor(std::slice::from_ref(&scissor));
+    }
+
+    pub fn command_bind_pipeline_graphics(
+        &self,
+        command_buffer: &CommandBuffer,
+        pipeline_index: usize,
+    ) {
         command_buffer.bind_pipeline_graphics(self.graphics_pipeline(pipeline_index));
+    }
+
+    pub fn command_bind_pipeline_graphics_and_set_dynamic_states(
+        &self,
+        command_buffer: &CommandBuffer,
+        pipeline_index: usize,
+    ) {
+        self.command_bind_pipeline_graphics(command_buffer, pipeline_index);
+        self.command_set_pipeline_dynamic_states(command_buffer);
     }
 
     /// Submit commands on the main graphics queue
@@ -332,13 +385,11 @@ impl Renderer {
         {
             for (pipeline_index, renderers) in self.renderers_grouped_by_pipeline.iter().enumerate()
             {
-                command_buffer.bind_pipeline_graphics(&self.graphics_pipelines[pipeline_index]);
+                self.command_bind_pipeline_graphics_and_set_dynamic_states(
+                    &command_buffer,
+                    pipeline_index,
+                );
                 for renderer_index in renderers {
-                    // XXX TODO: REMOVE:
-                    if *renderer_index == self.instanced_renderers.len() - 1 {
-                        // break;
-                    }
-
                     self.instanced_renderers[*renderer_index].record_draw_commands(
                         &command_buffer,
                         &self.graphics_pipelines[pipeline_index],
@@ -349,6 +400,10 @@ impl Renderer {
             }
 
             for renderer in &self.mosv_renderers {
+                self.command_bind_pipeline_graphics_and_set_dynamic_states(
+                    &command_buffer,
+                    renderer.draw_data.pipeline_index,
+                );
                 renderer.record_draw_commands(
                     &command_buffer,
                     &self.graphics_pipelines[renderer.draw_data.pipeline_index],

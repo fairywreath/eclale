@@ -601,10 +601,9 @@ impl Swapchain {
 
     fn recreate(&mut self) -> Result<()> {
         self.destroy();
-        log::debug!("Recreating swapchain...");
-        let new_swapchain = Self::new(self.device.clone(), vk::PresentModeKHR::IMMEDIATE)?;
+        // XXX FIXME: Properly set the present mode.
+        let new_swapchain = Self::new(self.device.clone(), vk::PresentModeKHR::FIFO)?;
         *self = new_swapchain;
-        log::debug!("Done recreating swapchain.");
         Ok(())
     }
 

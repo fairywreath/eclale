@@ -2,7 +2,7 @@ use nalgebra::{Vector2, Vector3};
 
 use crate::{geometry::line::Line, vulkan::shader::ShaderModuleDescriptor};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum RenderingType {
     /// Instanced objects with per-instance data.
     Instanced,
@@ -10,7 +10,7 @@ pub enum RenderingType {
     MultipleObjectsSingleVertexData,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RenderPipelineDescription {
     pub rendering_type: RenderingType,
     pub shader_modules: Vec<ShaderModuleDescriptor>,

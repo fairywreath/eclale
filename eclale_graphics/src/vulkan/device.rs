@@ -61,6 +61,8 @@ pub struct Device {
     pub(crate) queue_graphics_present: Queue,
 
     pub(crate) swapchain: Mutex<Swapchain>,
+    pub(crate) swapchain_recreated: Mutex<bool>,
+
     pub(crate) shared: Arc<DeviceShared>,
 }
 
@@ -69,7 +71,9 @@ impl Device {
         let instance = Instance::new(display_handle)?;
         let surface = Surface::new(&instance, window_handle, display_handle)?;
         let shared = Arc::new(DeviceShared::new(instance, surface)?);
+
         let swapchain = Mutex::new(Swapchain::new(shared.clone(), vk::PresentModeKHR::FIFO)?);
+        let swapchain_recreated = Mutex::new(false);
 
         // Always get index at queue 0 since only 1 queue is used per family.
         let queue_graphics_present_family_index =
@@ -129,6 +133,7 @@ impl Device {
         Ok(Self {
             shared,
             swapchain,
+            swapchain_recreated,
             queue_graphics_present,
             semaphore_graphics_frame,
             semaphores_swapchain_image_acquired,
@@ -195,6 +200,7 @@ impl Device {
                 // guessing the resize through acquire_next_image error internally here.
                 log::debug!("Failed swapchain acquire next image!");
                 swapchain.recreate()?;
+                *self.swapchain_recreated.lock() = true;
                 swapchain
                     .acquire_next_image(self.semaphores_swapchain_image_acquired[current_frame].raw)
                     .with_context(|| "Failed swapchain acquire next image after recreation!")?;
@@ -233,6 +239,17 @@ impl Device {
 
     pub fn swapchain_color_format(&self) -> vk::Format {
         self.swapchain.lock().surface_format.format
+    }
+
+    /// Returns the new 2D extent if the swapchain was recreated.
+    pub fn was_swapchain_recreated(&self) -> Option<vk::Extent2D> {
+        let mut recreated_status = self.swapchain_recreated.lock();
+        if *recreated_status {
+            *recreated_status = false;
+            Some(self.swapchain.lock().extent)
+        } else {
+            None
+        }
     }
 
     pub fn current_frame(&self) -> u64 {

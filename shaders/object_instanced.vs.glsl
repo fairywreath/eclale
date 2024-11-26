@@ -35,6 +35,7 @@ void main()
 
 
     gl_Position = global.viewProj * appliedRunnerTransform * instanceData.model * vec4(position, 1.0);
+    // gl_Position = global.viewProj * global.runnerTransform * vec4(position, 1.0);
     // gl_Position = global.viewProj * global.runnerTransform * instanceData.model * vec4(position, 1.0);
 
     // gl_Position = global.viewProj * global.runnerTransform * vec4(position, 1.0);

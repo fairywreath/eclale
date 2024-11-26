@@ -64,11 +64,13 @@ pub(crate) struct InstancedRenderer {
     pub(crate) draw_data: InstancedDrawData,
     gpu_resources: InstancedGpuResources,
     descriptor_set: DescriptorSet,
+
+    device: Arc<Device>,
 }
 
 impl InstancedRenderer {
     pub(crate) fn new(
-        device: &Arc<Device>,
+        device: Arc<Device>,
         draw_data: InstancedDrawData,
         descriptor_set_layout: Arc<DescriptorSetLayout>,
         shared_resources: &SharedGpuResources,
@@ -85,6 +87,7 @@ impl InstancedRenderer {
             draw_data,
             gpu_resources,
             descriptor_set,
+            device,
         })
     }
 
@@ -136,5 +139,17 @@ impl InstancedRenderer {
         device.update_descriptor_set(descriptor_set, &descriptor_binding_writes)?;
 
         Ok(())
+    }
+
+    pub(crate) fn update_shared_gpu_resources(
+        &self,
+        shared_resources: &SharedGpuResources,
+    ) -> Result<()> {
+        Self::update_descriptor_set(
+            &self.device,
+            &self.descriptor_set,
+            &self.gpu_resources,
+            shared_resources,
+        )
     }
 }

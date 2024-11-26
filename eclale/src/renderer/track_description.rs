@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use eclale_chart::{
-    Chart, ChartData, ContactNote, FlickNote, HitNote, HitNoteType, HoldNote, TrackPosition,
+    Chart, ChartData, ContactNote, FlickNote, HitNote, HitNoteType, HoldNote, Lane, LaneType,
+    TrackPosition,
 };
 use nalgebra::{Matrix4, Vector3, Vector4};
 
@@ -31,6 +34,19 @@ fn get_base_color_hit(hit_type: HitNoteType) -> Vector4<f32> {
         HitNoteType(4) | HitNoteType(14) => Vector4::new(0.0, 0.0, 1.0, 1.0),
         _ => {
             log::warn!("Encountered unknown hit note type {:?}", hit_type);
+            Vector4::new(1.0, 1.0, 1.0, 1.0)
+        }
+    }
+}
+
+fn get_base_color_lane(lane_type: LaneType) -> Vector4<f32> {
+    match lane_type {
+        // XXX TODO: Have proper type enums.
+        LaneType(1) | LaneType(12) => Vector4::new(1.0, 0.0, 0.0, 1.0),
+        LaneType(2) | LaneType(13) => Vector4::new(0.0, 1.0, 0.0, 1.0),
+        LaneType(3) | LaneType(14) => Vector4::new(0.0, 0.0, 1.0, 1.0),
+        _ => {
+            log::warn!("Encountered unknown lane note type {:?}", lane_type);
             Vector4::new(1.0, 1.0, 1.0, 1.0)
         }
     }
@@ -82,6 +98,15 @@ pub(crate) struct HoldNotesDescription {
 }
 
 #[derive(Clone)]
+pub(crate) struct LanesDescription {
+    // XXX TODO:  Use a hold note object type.
+    pub(crate) objects: Vec<PlatformInstance>,
+    pub(crate) mesh: Mesh,
+    /// Index to the object array for each vertex in the mesh.
+    pub(crate) objects_indices: Vec<usize>,
+}
+
+#[derive(Clone)]
 pub(crate) struct TrackDescription {
     pub(crate) notes_hit: Vec<NoteInstance>,
     pub(crate) notes_contact: Vec<NoteInstance>,
@@ -93,6 +118,8 @@ pub(crate) struct TrackDescription {
     pub(crate) platform_mesh: Mesh,
 
     pub(crate) hold_notes: HoldNotesDescription,
+
+    pub(crate) lanes: LanesDescription,
 }
 
 struct TrackDescriptionCreator {
@@ -146,24 +173,82 @@ impl TrackDescriptionCreator {
         mesh
     }
 
-    fn create_hold_note_mesh(&self, hold_note: &HoldNote) -> Mesh {
+    fn create_plane_mesh_from_points(&self, points: &[TrackPosition], width: f32) -> Mesh {
         let left_points = self
-            .track_position_to_xz_vertices(&hold_note.points)
+            .track_position_to_xz_vertices(points)
             .into_iter()
             .map(|mut point| {
-                point.x = point.x - (HIT_X_LENGTH / 2.0);
+                point.x = point.x - (width / 2.0);
                 point
             })
             .collect();
         let right_points = self
-            .track_position_to_xz_vertices(&hold_note.points)
+            .track_position_to_xz_vertices(points)
             .into_iter()
             .map(|mut point| {
-                point.x = point.x + (HIT_X_LENGTH / 2.0);
+                point.x = point.x + (width / 2.0);
                 point
             })
             .collect();
         Plane::triangulate_from_two_sides(left_points, right_points).to_mesh()
+    }
+
+    fn create_lanes(&self, lanes: &HashMap<LaneType, Vec<Lane>>) -> LanesDescription {
+        let (vertices, indices, objects, objects_indices) = lanes.iter().fold(
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            |(mut vertices, mut indices, mut objects, mut objects_indices), (lane_type, lanes)| {
+                for lane in lanes {
+                    // If not enemy lane. XXX TODO: Have proper enum type.
+                    if *lane_type != LaneType(4) {
+                        let mesh = self.create_plane_mesh_from_points(&lane.points, 0.04);
+
+                        // Append object index to global object indices array.
+                        let current_object_index = objects.len();
+                        objects_indices.extend(
+                            std::iter::repeat(current_object_index).take(mesh.vertices.len()),
+                        );
+
+                        // Append to global vertex indices array.
+                        let current_index_offset = vertices.len() as u16;
+                        vertices.extend(mesh.vertices);
+
+                        for index in mesh.indices {
+                            indices.push(index + current_index_offset);
+                        }
+
+                        objects.push(PlatformInstance {
+                            base_color: get_base_color_lane(*lane_type),
+                            // XXX TODO: Fill these properly.
+                            z_start_position: 0.0,
+                            z_end_position: 0.0,
+                        });
+                    }
+                }
+                (vertices, indices, objects, objects_indices)
+            },
+        );
+
+        assert_eq!(vertices.len(), objects_indices.len());
+        assert_eq!(*objects_indices.last().unwrap(), objects.len() - 1);
+
+        let mesh = Mesh { vertices, indices };
+        let mesh = mesh.transform(&Matrix4::new_translation(&Vector3::new(0.0, -0.005, 0.0)));
+
+        // println!(
+        //     "Lane notes mesh vert {} indices {}",
+        //     mesh.vertices.len(),
+        //     mesh.indices.len()
+        // );
+
+        LanesDescription {
+            mesh,
+            objects,
+            objects_indices,
+        }
+    }
+
+    fn create_hold_note_mesh(&self, hold_note: &HoldNote) -> Mesh {
+        self.create_plane_mesh_from_points(&hold_note.points, HIT_X_LENGTH)
     }
 
     fn create_hold_notes(&self, hold_notes: &[HoldNote]) -> HoldNotesDescription {
@@ -245,13 +330,7 @@ impl TrackDescriptionCreator {
 
         let hold_notes = self.create_hold_notes(&chart.notes.holds);
 
-        // XXX TODO: Properly fill this. This is required because hold notes are separate, i.e.
-        // there are multiple instance of hold notes from different lanes etc.
-        let hold_notes_instances = vec![PlatformInstance {
-            z_start_position: 0.0,
-            z_end_position: 200.0,
-            base_color: Vector4::new(0.5, 0.5, 0.5, 1.0),
-        }];
+        let lanes = self.create_lanes(&chart.track.lanes);
 
         TrackDescription {
             notes_hit,
@@ -269,6 +348,7 @@ impl TrackDescriptionCreator {
             }],
 
             hold_notes,
+            lanes,
         }
     }
 }
