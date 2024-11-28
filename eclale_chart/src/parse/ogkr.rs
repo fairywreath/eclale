@@ -6,7 +6,10 @@ use std::{
 use anyhow::Result;
 
 use ogkr::{
-    lex::tokenize,
+    lex::{
+        command::{BulletShooter, BulletTarget},
+        tokenize,
+    },
     parse::{
         analysis::{self as ogkr_analysis, parse_raw_ogkr, Ogkr},
         raw::parse_tokens,
@@ -15,9 +18,10 @@ use ogkr::{
 
 use crate::{
     util::{MeasureCompositionData, XPositionCalculator, ZPosition, ZPositionCalculator},
-    BpmChange, Chart, ChartData, Composition, ContactNote, ContactNoteType, EvadeNoteType,
-    FlickDirection, FlickNote, Header, HitNote, HitNoteType, HoldNote, Lane, LaneType, Metadata,
-    Notes, Platform, Soflan, Time, TimeSignature, TimeSignatureChange, Track, TrackPosition,
+    BpmChange, Chart, ChartData, Composition, ContactNote, ContactNoteType, EvadeNote,
+    EvadeNoteType, FlickDirection, FlickNote, Header, HitNote, HitNoteType, HoldNote, Lane,
+    LaneType, Metadata, NoteMovement, Notes, Platform, Soflan, Time, TimeSignature,
+    TimeSignatureChange, Track, TrackPosition,
 };
 
 impl From<ogkr_analysis::MeterChange> for TimeSignature {
@@ -69,9 +73,7 @@ impl OgkrChartCreator {
         let starting_speed_multiplier = 1.0;
         let subdivision = ogkr.header.tick_resolution.unwrap().resolution;
 
-        // XXX TODO: Properly query num measures from somewhere.
-        let num_measures = 200;
-
+        let num_measures = ogkr.extra_metadata.num_measures as usize + 1;
         let z_position_calculator = Self::create_z_position_calculator(
             &ogkr.composition,
             starting_time_signature,
@@ -220,13 +222,12 @@ impl OgkrChartCreator {
     ) -> Lane {
         let points = lanes
             .iter()
-            .map(|(_, lane_id)| {
+            .flat_map(|(_, lane_id)| {
                 // XXX TODO: Properly handle unwrap here.
                 let lane = self.ogkr.track.get_lane(*lane_id).unwrap();
 
                 self.create_points_from_lane(lane)
             })
-            .flatten()
             .collect();
 
         Lane { points }
@@ -238,7 +239,7 @@ impl OgkrChartCreator {
     ) -> Vec<Lane> {
         lanes
             .iter()
-            .map(|(_, lane_ids)| {
+            .flat_map(|(_, lane_ids)| {
                 lane_ids
                     .iter()
                     .map(|lane_id| {
@@ -249,7 +250,6 @@ impl OgkrChartCreator {
                     })
                     .collect::<Vec<_>>()
             })
-            .flatten()
             .collect()
     }
 
@@ -287,6 +287,74 @@ impl OgkrChartCreator {
         );
 
         Track { platforms, lanes }
+    }
+
+    fn create_evade_notes(&self) -> Vec<EvadeNote> {
+        let mut evade_notes = Vec::new();
+        for bullet in self.ogkr.bullets.all_bullets() {
+            // XXX: Remove this unwrap. Make this return the raw value directly, the id should
+            // always be valid as static analysis is already done when parsing.
+            let palette = self
+                .ogkr
+                .bullets
+                .get_bullet_palette(&bullet.palette_id)
+                .unwrap();
+
+            if palette.shooter == BulletShooter::Enemy || palette.target == BulletTarget::Player {
+                log::debug!(
+                    "Skipping unsupported bullet palette {:?} with {:?} {:?}",
+                    &palette.id,
+                    palette.shooter,
+                    palette.target
+                );
+                continue;
+            }
+
+            let end_position = self.create_track_position(bullet.position);
+
+            // XXX TODO: Determine a nice number for this.
+            let speed_factor = 1.0;
+            let duration = palette.speed * speed_factor;
+
+            // XXX TODO: Properly support time arithmetic.
+            // Initial Z axis position of the bullet.
+            let start_time = Time(end_position.time.0 + duration);
+            let start_z = end_position.z + duration;
+
+            let start_position = match palette.shooter {
+                BulletShooter::EndPosition => TrackPosition {
+                    time: start_time,
+                    z: start_z,
+                    x: end_position.x,
+                },
+                BulletShooter::Center => TrackPosition {
+                    time: start_time,
+                    z: start_z,
+                    x: 0.0,
+                },
+                _ => todo!(),
+            };
+
+            let trigger_time = Time(end_position.time.0 - duration);
+
+            // XXX TODO: Properly set movement parameters.
+            let movement = NoteMovement {
+                start: start_position,
+                end: end_position,
+                trigger_time,
+                duration,
+            };
+
+            let evade_note = EvadeNote {
+                // XXX TODO: Properly differentiate different bullet types.
+                ty: EvadeNoteType(0),
+                movement,
+            };
+
+            evade_notes.push(evade_note);
+        }
+
+        evade_notes
     }
 
     fn hit_note_type(lane: ogkr_analysis::LaneType, is_critical: bool) -> HitNoteType {
@@ -354,8 +422,8 @@ impl OgkrChartCreator {
 
         let holds = self.create_hold_notes(notes.all_holds());
 
-        // XXX TODO: Fill in from bullets.
-        let evades = Vec::new();
+        let evades = self.create_evade_notes();
+        println!("Number of evade notes {}", evades.len());
 
         Notes {
             hits,
@@ -387,6 +455,7 @@ fn parse_ogkr(file_name: &str) -> Result<Ogkr> {
 
     println!("number of tap tokens {:#?}", raw.notes.taps.len());
     println!("number of flick tokens {:#?}", raw.notes.flicks.len());
+    println!("number of bullet tokens {:#?}", raw.bullets.len());
 
     let ogkr = parse_raw_ogkr(raw)?;
 

@@ -7,15 +7,20 @@ use mosv::MOSVRenderer;
 use nalgebra::Vector2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
-use crate::vulkan::{
-    command::CommandBuffer,
-    device::Device,
-    resource::{
-        Buffer, BufferDescriptor, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Image,
-        ImageDescriptor, Pipeline, PipelineDescriptor,
+use crate::{
+    gui::{GuiRenderer, GuiRendererDesc},
+    vulkan::{
+        command::CommandBuffer,
+        device::Device,
+        resource::{
+            Buffer, BufferDescriptor, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Image,
+            ImageDescriptor, Pipeline, PipelineDescriptor,
+        },
+        types::{
+            DescriptorSetLayoutBinding, PipelineDepthStencilState, PipelineRasterizationState,
+        },
+        vk,
     },
-    types::{DescriptorSetLayoutBinding, PipelineDepthStencilState, PipelineRasterizationState},
-    vk,
 };
 
 use render_description::{RenderDescription, RenderPipelineDescription, RenderingType};
@@ -43,6 +48,8 @@ pub struct Renderer {
     instance_renderers_draw_indexed_commands: Vec<vk::DrawIndexedIndirectCommand>,
 
     mosv_renderers: Vec<MOSVRenderer>,
+
+    gui_renderer: GuiRenderer,
 }
 
 impl Renderer {
@@ -123,6 +130,13 @@ impl Renderer {
             instanced_renderers.len()
         );
 
+        let gui_renderer = GuiRenderer::new(
+            device.clone(),
+            GuiRendererDesc {
+                depth_attachment_format: Some(shared_gpu_resources.image_depth.format),
+            },
+        )?;
+
         Ok(Self {
             device,
             shared_gpu_resources,
@@ -134,6 +148,8 @@ impl Renderer {
             instance_renderers_draw_indexed_commands,
 
             mosv_renderers,
+
+            gui_renderer,
         })
     }
 
@@ -435,5 +451,17 @@ impl Renderer {
         draw_indexed_command: vk::DrawIndexedIndirectCommand,
     ) {
         self.instance_renderers_draw_indexed_commands[renderer_index] = draw_indexed_command;
+    }
+
+    pub fn update_instanced_renderer_instance_gpu_data(
+        &mut self,
+        renderer_index: usize,
+        data: &[u8],
+    ) -> Result<()> {
+        self.instanced_renderers[renderer_index].update_instance_gpu_data(data)
+    }
+
+    pub fn egui(&self) -> &egui_ash_renderer::Renderer {
+        &self.gui_renderer.renderer
     }
 }

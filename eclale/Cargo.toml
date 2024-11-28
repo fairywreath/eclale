@@ -12,6 +12,13 @@ eclale_audio = { version = "0.1.0", path = "../eclale_audio" }
 eclale_chart = { version = "0.1.0", path = "../eclale_chart" }
 eclale_graphics = { version = "0.1.0", path = "../eclale_graphics" }
 
+egui = "0.29"
+
+[dependencies.egui-winit]
+version = "0.29"
+default-features = false
+features = ["x11", "clipboard"] 
+
 # XXX chore: bump to latest.
 [dependencies.winit]
 version = "0.29.7"

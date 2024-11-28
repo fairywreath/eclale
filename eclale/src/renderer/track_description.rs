@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use eclale_chart::{
-    Chart, ChartData, ContactNote, FlickNote, HitNote, HitNoteType, HoldNote, Lane, LaneType,
-    TrackPosition,
+    Chart, ChartData, ContactNote, EvadeNote, FlickNote, HitNote, HitNoteType, HoldNote, Lane,
+    LaneType, TrackPosition,
 };
-use nalgebra::{Matrix4, Vector3, Vector4};
+use nalgebra::{Matrix4, Vector2, Vector3, Vector4};
 
 use eclale_graphics::geometry::{plane::Plane, Mesh};
 
@@ -106,11 +106,42 @@ pub(crate) struct LanesDescription {
     pub(crate) objects_indices: Vec<usize>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct EvadeNoteInstance {
+    /// Start position in the XZ grid.
+    pub(crate) start_position: Vector2<f32>,
+
+    /// End position in the XZ grid.
+    pub(crate) end_position: Vector2<f32>,
+
+    pub(crate) base_color: Vector4<f32>,
+
+    // Time to start note movement in seconds.
+    pub(crate) trigger_time: f32,
+
+    // Duration of movement in seconds.
+    pub(crate) duration: f32,
+}
+
+impl EvadeNoteInstance {
+    fn from_chart_evade(note: &EvadeNote) -> Self {
+        Self {
+            start_position: Vector2::new(note.movement.start.x, note.movement.start.z),
+            end_position: Vector2::new(note.movement.end.x, note.movement.end.z),
+            base_color: Vector4::new(0.6, 0.2, 0.9, 1.0),
+            trigger_time: note.movement.trigger_time.0,
+            duration: note.movement.duration,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct TrackDescription {
     pub(crate) notes_hit: Vec<NoteInstance>,
     pub(crate) notes_contact: Vec<NoteInstance>,
     pub(crate) notes_flick: Vec<NoteInstance>,
+
+    pub(crate) notes_evade: Vec<EvadeNoteInstance>,
 
     pub(crate) settings: TrackSettings,
 
@@ -136,6 +167,21 @@ impl TrackDescriptionCreator {
             .into_iter()
             .map(|mut n| {
                 n.z_position = n.z_position * self.settings.runner_speed;
+                n
+            })
+            .collect()
+    }
+
+    fn apply_runner_speed_on_evade_notes(
+        &self,
+        notes: Vec<EvadeNoteInstance>,
+    ) -> Vec<EvadeNoteInstance> {
+        notes
+            .into_iter()
+            .map(|mut n| {
+                // y is z here as Vector2 is used to represent position in the zx plane..
+                n.start_position.y = n.start_position.y * self.settings.runner_speed;
+                n.end_position.y = n.end_position.y * self.settings.runner_speed;
                 n
             })
             .collect()
@@ -320,10 +366,17 @@ impl TrackDescriptionCreator {
             .iter()
             .map(|n| NoteInstance::from_chart_flick(n, true))
             .collect();
+        let notes_evade = chart
+            .notes
+            .evades
+            .iter()
+            .map(|n| EvadeNoteInstance::from_chart_evade(n))
+            .collect();
 
         let notes_hit = self.apply_runner_speed(notes_hit);
         let notes_contact = self.apply_runner_speed(notes_contact);
         let notes_flick = self.apply_runner_speed(notes_flick);
+        let notes_evade = self.apply_runner_speed_on_evade_notes(notes_evade);
 
         // XXX TODO: Handle case where more than one platform instance exists.
         let platform_mesh = self.create_platform_mesh(&chart.track.platforms[0]);
@@ -336,6 +389,8 @@ impl TrackDescriptionCreator {
             notes_hit,
             notes_contact,
             notes_flick,
+
+            notes_evade,
 
             settings: self.settings,
 

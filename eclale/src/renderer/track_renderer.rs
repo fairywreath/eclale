@@ -27,7 +27,9 @@ use eclale_graphics::{
     },
 };
 
-use super::track_description::{NoteInstance, PlatformInstance, TrackDescription};
+use super::track_description::{
+    EvadeNoteInstance, NoteInstance, PlatformInstance, TrackDescription,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
@@ -69,6 +71,27 @@ impl ObjectInstanceGpuData {
 
     fn from_note_instances(instances: &[NoteInstance]) -> Vec<Self> {
         instances.iter().map(Self::from_note_instance).collect()
+    }
+
+    fn from_evade_note_instance(instance: &EvadeNoteInstance) -> Self {
+        Self {
+            // Use initial position.
+            transform: Matrix4::new_translation(&Vector3::new(
+                instance.start_position.x,
+                0.0,
+                instance.start_position.y,
+            )),
+            base_color: instance.base_color,
+            apply_runner_transform: 1,
+            ..Default::default()
+        }
+    }
+
+    fn from_evade_note_instances(instances: &[EvadeNoteInstance]) -> Vec<Self> {
+        instances
+            .iter()
+            .map(Self::from_evade_note_instance)
+            .collect()
     }
 
     fn from_platform_instance(instance: &PlatformInstance) -> Self {
@@ -122,8 +145,14 @@ impl RenderMeshes {
             torus_builder.build_mesh().transform(&Matrix4::new_rotation(
                 Vector3::x() * std::f32::consts::FRAC_PI_2,
             ))
-        };
-        let evade = Polyhedron::icosahedron(0.12).into();
+        }
+        .transform(&Matrix4::new_translation(&Vector3::new(0.0, -0.08, 0.0)));
+
+        // let evade = Polyhedron::icosahedron(0.12).into();
+        let evade = contact
+            .clone()
+            .transform(&Matrix4::new_translation(&Vector3::new(0.0, -0.08, 0.0)));
+
         let flick = Polyhedron::cuboid(0.9, 0.05, HIT_Z_LENGTH).into();
 
         Self {
@@ -273,7 +302,7 @@ impl RenderDescriptionCreator {
         });
     }
 
-    fn create(mut self) -> RenderDescription {
+    fn create(mut self) -> (RenderDescription, RenderDescriptionMetadata) {
         let pipeline_index_instanced = self.add_pipeline(RenderPipelines::instanced());
         let pipeline_index_mosv_planes = self.add_pipeline(RenderPipelines::mosv_planes_smooth());
         let pipeline_index_mosv_lines = self.add_pipeline(RenderPipelines::mosv_lines_smooth());
@@ -291,6 +320,15 @@ impl RenderDescriptionCreator {
         self.add_objects_instanced_draw_data(
             &ObjectInstanceGpuData::from_note_instances(&self.description.notes_flick),
             self.meshes.flick(),
+            pipeline_index_instanced,
+        );
+
+        let evade_notes_renderer_index = self.instanced_draw_data.len();
+        let evade_notes_object_instances =
+            ObjectInstanceGpuData::from_evade_note_instances(&self.description.notes_evade);
+        self.add_objects_instanced_draw_data(
+            &evade_notes_object_instances,
+            self.meshes.evade(),
             pipeline_index_instanced,
         );
 
@@ -314,13 +352,34 @@ impl RenderDescriptionCreator {
             &self.description.lanes.objects_indices.clone(),
         );
 
-        RenderDescription {
-            scene_uniform_data_size: std::mem::size_of::<SceneUniformGpuData>() as _,
-            pipelines: self.pipelines,
-            instanced_draw_data: self.instanced_draw_data,
-            mosv_draw_data: self.mosv_draw_data,
-        }
+        (
+            RenderDescription {
+                scene_uniform_data_size: std::mem::size_of::<SceneUniformGpuData>() as _,
+                pipelines: self.pipelines,
+                instanced_draw_data: self.instanced_draw_data,
+                mosv_draw_data: self.mosv_draw_data,
+            },
+            RenderDescriptionMetadata {
+                evade_notes_data: EvadeNotesRendererData {
+                    gpu_object_instances: evade_notes_object_instances,
+                    evade_notes_instances: self.description.notes_evade,
+                    renderer_index: evade_notes_renderer_index,
+                },
+            },
+        )
     }
+}
+
+#[derive(Clone)]
+struct RenderDescriptionMetadata {
+    evade_notes_data: EvadeNotesRendererData,
+}
+
+#[derive(Clone)]
+struct EvadeNotesRendererData {
+    gpu_object_instances: Vec<ObjectInstanceGpuData>,
+    evade_notes_instances: Vec<EvadeNoteInstance>,
+    renderer_index: usize,
 }
 
 pub(crate) struct TrackRenderer {
@@ -328,6 +387,8 @@ pub(crate) struct TrackRenderer {
     track_description: TrackDescription,
     render_description: RenderDescription,
     scene_uniform: SceneUniformGpuData,
+
+    evade_notes_data: EvadeNotesRendererData,
 }
 
 impl TrackRenderer {
@@ -336,7 +397,10 @@ impl TrackRenderer {
         display_handle: RawDisplayHandle,
         track_description: TrackDescription,
     ) -> Result<Self> {
-        let render_description = RenderDescriptionCreator::new(track_description.clone()).create();
+        let (render_description, render_description_metadata) =
+            RenderDescriptionCreator::new(track_description.clone()).create();
+        let evade_notes_data = render_description_metadata.evade_notes_data;
+
         let renderer = Renderer::new(window_handle, display_handle, render_description.clone())?;
 
         Ok(Self {
@@ -344,12 +408,14 @@ impl TrackRenderer {
             track_description,
             render_description,
             scene_uniform: SceneUniformGpuData::default(),
+            evade_notes_data,
         })
     }
 
     pub(crate) fn render(&mut self) -> Result<()> {
         self.renderer
             .update_scene_uniform_data(bytemuck::bytes_of(&self.scene_uniform));
+
         self.renderer.render()?;
 
         Ok(())
@@ -359,9 +425,51 @@ impl TrackRenderer {
         self.scene_uniform.view_projection = view_projection;
     }
 
-    pub(crate) fn update_runner_position(&mut self, runner_position: f32) {
+    pub(crate) fn update_runner_position(&mut self, runner_position: f32, time: f32) {
         self.scene_uniform.runner_transform =
             Matrix4::new_translation(&Vector3::new(0.0, 0.0, -runner_position));
+
+        self.update_evade_notes(time);
+    }
+
+    fn update_evade_notes(&mut self, current_time: f32) {
+        // let gpu_data = ObjectInstanceGpuData::from_evade_note_instances(
+        //     &self.evade_notes_data.evade_notes_instances,
+        // );
+
+        // XXX TODO: Properly optimize evade note position update, only check and change what is necessary.
+        for (i, note) in self
+            .evade_notes_data
+            .evade_notes_instances
+            .iter()
+            .enumerate()
+        {
+            let current_position = if current_time < note.trigger_time {
+                // Note has not started yet; return the start position
+                note.start_position
+            } else if current_time > note.trigger_time + note.duration {
+                // Note has already ended; return the end position
+                note.end_position
+            } else {
+                // Note is active; calculate normalized time `t`
+                let t = (current_time - note.trigger_time) / note.duration;
+                // Interpolate position
+                note.start_position + t * (note.end_position - note.start_position)
+            };
+
+            self.evade_notes_data.gpu_object_instances[i].transform =
+                Matrix4::new_translation(&Vector3::new(current_position.x, 0.0, current_position.y))
+        }
+
+        let gpu_data = bytemuck::cast_slice(&self.evade_notes_data.gpu_object_instances);
+
+        // XXX TODO: remove the unwrap here.
+        self.renderer
+            .update_instanced_renderer_instance_gpu_data(
+                self.evade_notes_data.renderer_index,
+                gpu_data,
+            )
+            .unwrap();
     }
 
     pub(crate) fn swapchain_extent(&self) -> Vector2<u32> {

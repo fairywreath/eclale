@@ -152,4 +152,9 @@ impl InstancedRenderer {
             shared_resources,
         )
     }
+
+    pub(crate) fn update_instance_gpu_data(&self, data: &[u8]) -> Result<()> {
+        // XXX TODO: Have a proper cpu->gpu transfer mechanism.
+        self.gpu_resources.storage_buffer_instances.write_data(data)
+    }
 }

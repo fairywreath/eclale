@@ -5,7 +5,7 @@ mod util;
 
 /// Time in seconds.
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
-pub struct Time(f32);
+pub struct Time(pub f32);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct TrackPosition {
@@ -61,10 +61,33 @@ pub struct ContactNote {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EvadeNoteType(pub u16);
 
+/// Linear translation.
+#[derive(Clone, Debug)]
+pub struct NoteMovement {
+    /// Initial position of the object.
+    pub start: TrackPosition,
+
+    /// Final position of the object.
+    /// XXX TODO: Support current player position as end position.
+    pub end: TrackPosition,
+
+    /// Time when movement begins.
+    pub trigger_time: Time,
+
+    /// Duration in seconds.
+    pub duration: f32,
+}
+
+impl NoteMovement {
+    pub fn is_static(&self) -> bool {
+        self.start == self.end
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EvadeNote {
     pub ty: EvadeNoteType,
-    pub position: TrackPosition,
+    pub movement: NoteMovement,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FlickDirection {

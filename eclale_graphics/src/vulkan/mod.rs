@@ -26,9 +26,9 @@ pub use raw_window_handle;
 
 const QUEUE_FAMILY_INDEX_GRAPHICS: usize = 0;
 
-struct Instance {
+pub(crate) struct Instance {
     entry: ash::Entry,
-    raw: ash::Instance,
+    pub(crate) raw: ash::Instance,
     debug_utils: debug_utils::Instance,
     debug_utils_messenger: vk::DebugUtilsMessengerEXT,
 }
@@ -133,8 +133,8 @@ unsafe extern "system" fn vulkan_debug_utils_callback(
 }
 
 #[derive(Debug, Clone)]
-struct PhysicalDevice {
-    raw: vk::PhysicalDevice,
+pub(crate) struct PhysicalDevice {
+    pub(crate) raw: vk::PhysicalDevice,
     name: String,
     device_type: vk::PhysicalDeviceType,
     _limits: vk::PhysicalDeviceLimits,
@@ -230,9 +230,9 @@ pub(crate) struct DeviceShared {
     pub(crate) raw: ash::Device,
     pub(crate) mesh_shader_functions: mesh_shader::Device,
     queue_families: Vec<QueueFamily>,
-    physical_device: PhysicalDevice,
-    surface: Surface,
-    instance: Instance,
+    pub(crate) physical_device: PhysicalDevice,
+    pub(crate) surface: Surface,
+    pub(crate) instance: Instance,
 }
 
 impl DeviceShared {
@@ -378,7 +378,8 @@ fn select_discrete_gpu(devices: &[PhysicalDevice]) -> Result<PhysicalDevice> {
 
     Ok(device.clone())
 }
-struct Surface {
+
+pub(crate) struct Surface {
     raw_ash: khr::surface::Instance,
     raw_vulkan: vk::SurfaceKHR,
 }

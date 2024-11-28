@@ -52,7 +52,7 @@ fn main() -> Result<()> {
 
     // println!("{:#?}", &chart.data.notes.hits);
 
-    let chart_speed = 2.0;
+    let chart_speed = 3.0;
     // let chart_speed = 0.2;
     let runner_speed = 20.0;
 
@@ -103,7 +103,7 @@ fn main() -> Result<()> {
 
     let mut current_runner_position = 0.0;
 
-    let eye = Point3::new(0.0, -1.3, -1.3);
+    let eye = Point3::new(0.0, -1.3, -2.5);
     let target = Point3::new(0.0, 2.0, 4.5);
 
     let view = Isometry3::look_at_rh(&eye, &target, &Vector3::y());
@@ -117,6 +117,8 @@ fn main() -> Result<()> {
             * view.to_homogeneous()
             // XXX: Use view and projection matrices that fit accordingly to the vulkan coord system. (?)
             * Matrix4::new_nonuniform_scaling(&Vector3::new(-1.0, 1.0, 1.0));
+
+    let mut elapsed_time = 0.0;
 
     event_loop.run(move |event, eltw| {
         eltw.set_control_flow(ControlFlow::Poll);
@@ -132,6 +134,8 @@ fn main() -> Result<()> {
                     let dt = now - last_render_time;
                     last_render_time = now;
 
+                    elapsed_time += dt.as_secs_f32() * chart_speed;
+
                     // // let current_audio_position = sound_handle.position() as f32;
                     // // let _audio_dt = current_audio_position - last_audio_position;
                     // // last_audio_position = current_audio_position;
@@ -139,7 +143,7 @@ fn main() -> Result<()> {
                     current_runner_position += dt.as_secs_f32() * runner_speed * chart_speed;
 
                     track_renderer.update_view_projection(view_projection);
-                    track_renderer.update_runner_position(current_runner_position);
+                    track_renderer.update_runner_position(current_runner_position, elapsed_time);
                     track_renderer.render().unwrap();
                 }
                 _ => (),

@@ -17,3 +17,8 @@ raw-window-handle = "0.6.2"
 version = "0.27.0"
 default-features = false
 features = ["vulkan"]
+
+[dependencies.egui-ash-renderer]
+version = "0.6.0"
+features = ["gpu-allocator", "dynamic-rendering"]
+
