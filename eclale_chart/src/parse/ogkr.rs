@@ -18,11 +18,15 @@ use ogkr::{
 
 use crate::{
     util::{MeasureCompositionData, XPositionCalculator, ZPosition, ZPositionCalculator},
-    BpmChange, Chart, ChartData, Composition, ContactNote, ContactNoteType, EvadeNote,
+    BpmChange, Chart, ChartData, ChartUtils, Composition, ContactNote, ContactNoteType, EvadeNote,
     EvadeNoteType, FlickDirection, FlickNote, Header, HitNote, HitNoteType, HoldNote, Lane,
     LaneType, Metadata, NoteMovement, Notes, Platform, Soflan, Time, TimeSignature,
     TimeSignatureChange, Track, TrackPosition,
 };
+
+const OGKR_X_POSITION_MULTIPLIER: f32 = 1.0 / 25.0;
+
+// XXX TODO: Have dedicated type enums defined here for notes, lanes etc.
 
 impl From<ogkr_analysis::MeterChange> for TimeSignature {
     fn from(m: ogkr_analysis::MeterChange) -> Self {
@@ -68,12 +72,13 @@ impl OgkrChartCreator {
             num_beats: starting_time_signature.num_beats,
             note_value: starting_time_signature.note_value,
         };
-        // XXX TODO FIXME: unwrap bpm def bits inside ogkr parse analysis.
+        // XXX TODO FIXME: unwrap bpm def bits and other header data inside ogkr parse analysis.
         let starting_bpm = f32::from_bits(ogkr.header.bpm_definition.unwrap().first) as _;
         let starting_speed_multiplier = 1.0;
         let subdivision = ogkr.header.tick_resolution.unwrap().resolution;
 
         let num_measures = ogkr.extra_metadata.num_measures as usize + 1;
+
         let z_position_calculator = Self::create_z_position_calculator(
             &ogkr.composition,
             starting_time_signature,
@@ -94,8 +99,11 @@ impl OgkrChartCreator {
     }
 
     fn x_position(&self, position: ogkr_analysis::XPosition) -> f32 {
-        self.x_position_calculator
-            .x_position_at(position.position as _, position.offset as _)
+        self.x_position_calculator.x_position_at(
+            position.position as _,
+            position.offset as _,
+            OGKR_X_POSITION_MULTIPLIER,
+        )
     }
 
     fn z_position(&self, time: ogkr_analysis::TimingPoint) -> ZPosition {
@@ -313,7 +321,7 @@ impl OgkrChartCreator {
             let end_position = self.create_track_position(bullet.position);
 
             // XXX TODO: Determine a nice number for this.
-            let speed_factor = 1.0;
+            let speed_factor = 1.5;
             let duration = palette.speed * speed_factor;
 
             // XXX TODO: Properly support time arithmetic.
@@ -374,6 +382,7 @@ impl OgkrChartCreator {
         ContactNoteType(0)
     }
 
+    // XXX TODO: Support other bullet types.
     fn evade_note_type() -> EvadeNoteType {
         EvadeNoteType(0)
     }
@@ -423,7 +432,6 @@ impl OgkrChartCreator {
         let holds = self.create_hold_notes(notes.all_holds());
 
         let evades = self.create_evade_notes();
-        println!("Number of evade notes {}", evades.len());
 
         Notes {
             hits,
@@ -434,7 +442,7 @@ impl OgkrChartCreator {
         }
     }
 
-    fn create_chart(&self) -> Chart {
+    fn create(self) -> Chart {
         Chart {
             // XXX TODO: Properly fill these.
             header: Header::default(),
@@ -444,6 +452,9 @@ impl OgkrChartCreator {
                 notes: self.create_notes(),
                 composition: self.create_composition(),
             },
+            utils: ChartUtils {
+                z_position_calculator: self.z_position_calculator,
+            },
         }
     }
 }
@@ -452,24 +463,13 @@ fn parse_ogkr(file_name: &str) -> Result<Ogkr> {
     let source = fs::read_to_string(file_name)?;
     let tokens = tokenize(&source)?;
     let raw = parse_tokens(tokens)?;
-
-    println!("number of tap tokens {:#?}", raw.notes.taps.len());
-    println!("number of flick tokens {:#?}", raw.notes.flicks.len());
-    println!("number of bullet tokens {:#?}", raw.bullets.len());
-
     let ogkr = parse_raw_ogkr(raw)?;
-
-    println!("number of ogkr flick notes {:#?}", ogkr.notes.flicks.len());
 
     Ok(ogkr)
 }
 
 pub fn create_chart_from_ogkr_file(file_name: &str) -> Result<Chart> {
     let ogkr = parse_ogkr(file_name)?;
-
-    // println!("{:#?}", &ogkr.notes.taps);
-    println!("number of taps {:#?}", ogkr.notes.taps.len());
     let ogkr_chart_creator = OgkrChartCreator::new(ogkr);
-
-    Ok(ogkr_chart_creator.create_chart())
+    Ok(ogkr_chart_creator.create())
 }

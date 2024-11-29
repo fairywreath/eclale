@@ -16,11 +16,10 @@ pub(crate) struct TrackSettings {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct NoteInstance {
+pub(crate) struct ObjectInstance {
     pub(crate) z_position: f32,
     pub(crate) x_position: f32,
     pub(crate) base_color: Vector4<f32>,
-
     pub(crate) apply_runner_transform: bool,
 }
 
@@ -52,7 +51,7 @@ fn get_base_color_lane(lane_type: LaneType) -> Vector4<f32> {
     }
 }
 
-impl NoteInstance {
+impl ObjectInstance {
     fn from_chart_hit(note: &HitNote, apply_runner_transform: bool) -> Self {
         Self {
             z_position: note.position.z,
@@ -81,17 +80,9 @@ impl NoteInstance {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct PlatformInstance {
-    pub(crate) z_start_position: f32,
-    pub(crate) z_end_position: f32,
-    pub(crate) base_color: Vector4<f32>,
-}
-
 #[derive(Clone)]
 pub(crate) struct HoldNotesDescription {
-    // XXX TODO:  Use a hold note object type.
-    pub(crate) objects: Vec<PlatformInstance>,
+    pub(crate) objects: Vec<ObjectInstance>,
     pub(crate) mesh: Mesh,
     /// Index to the object array for each vertex in the mesh.
     pub(crate) objects_indices: Vec<usize>,
@@ -100,14 +91,14 @@ pub(crate) struct HoldNotesDescription {
 #[derive(Clone)]
 pub(crate) struct LanesDescription {
     // XXX TODO:  Use a hold note object type.
-    pub(crate) objects: Vec<PlatformInstance>,
+    pub(crate) objects: Vec<ObjectInstance>,
     pub(crate) mesh: Mesh,
     /// Index to the object array for each vertex in the mesh.
     pub(crate) objects_indices: Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct EvadeNoteInstance {
+pub(crate) struct EvadeObjectInstance {
     /// Start position in the XZ grid.
     pub(crate) start_position: Vector2<f32>,
 
@@ -123,7 +114,7 @@ pub(crate) struct EvadeNoteInstance {
     pub(crate) duration: f32,
 }
 
-impl EvadeNoteInstance {
+impl EvadeObjectInstance {
     fn from_chart_evade(note: &EvadeNote) -> Self {
         Self {
             start_position: Vector2::new(note.movement.start.x, note.movement.start.z),
@@ -137,15 +128,15 @@ impl EvadeNoteInstance {
 
 #[derive(Clone)]
 pub(crate) struct TrackDescription {
-    pub(crate) notes_hit: Vec<NoteInstance>,
-    pub(crate) notes_contact: Vec<NoteInstance>,
-    pub(crate) notes_flick: Vec<NoteInstance>,
+    pub(crate) notes_hit: Vec<ObjectInstance>,
+    pub(crate) notes_contact: Vec<ObjectInstance>,
+    pub(crate) notes_flick: Vec<ObjectInstance>,
 
-    pub(crate) notes_evade: Vec<EvadeNoteInstance>,
+    pub(crate) notes_evade: Vec<EvadeObjectInstance>,
 
     pub(crate) settings: TrackSettings,
 
-    pub(crate) platform_instances: Vec<PlatformInstance>,
+    pub(crate) platform_instances: Vec<ObjectInstance>,
     pub(crate) platform_mesh: Mesh,
 
     pub(crate) hold_notes: HoldNotesDescription,
@@ -162,7 +153,7 @@ impl TrackDescriptionCreator {
         Self { settings }
     }
 
-    fn apply_runner_speed(&self, notes: Vec<NoteInstance>) -> Vec<NoteInstance> {
+    fn apply_runner_speed(&self, notes: Vec<ObjectInstance>) -> Vec<ObjectInstance> {
         notes
             .into_iter()
             .map(|mut n| {
@@ -174,8 +165,8 @@ impl TrackDescriptionCreator {
 
     fn apply_runner_speed_on_evade_notes(
         &self,
-        notes: Vec<EvadeNoteInstance>,
-    ) -> Vec<EvadeNoteInstance> {
+        notes: Vec<EvadeObjectInstance>,
+    ) -> Vec<EvadeObjectInstance> {
         notes
             .into_iter()
             .map(|mut n| {
@@ -201,20 +192,8 @@ impl TrackDescriptionCreator {
         let walls_left_vertices = self.track_position_to_xz_vertices(&platform.points_left);
         let walls_right_vertices = self.track_position_to_xz_vertices(&platform.points_right);
 
-        println!(
-            "Walls vertices len {} {}",
-            walls_left_vertices.len(),
-            walls_right_vertices.len()
-        );
-
         let mesh =
             Plane::triangulate_from_two_sides(walls_left_vertices, walls_right_vertices).to_mesh();
-
-        println!(
-            "Platform mesh vert {} indices {}",
-            mesh.vertices.len(),
-            mesh.indices.len()
-        );
 
         mesh
     }
@@ -246,7 +225,7 @@ impl TrackDescriptionCreator {
                 for lane in lanes {
                     // If not enemy lane. XXX TODO: Have proper enum type.
                     if *lane_type != LaneType(4) {
-                        let mesh = self.create_plane_mesh_from_points(&lane.points, 0.04);
+                        let mesh = self.create_plane_mesh_from_points(&lane.points, 0.1);
 
                         // Append object index to global object indices array.
                         let current_object_index = objects.len();
@@ -262,11 +241,11 @@ impl TrackDescriptionCreator {
                             indices.push(index + current_index_offset);
                         }
 
-                        objects.push(PlatformInstance {
+                        objects.push(ObjectInstance {
                             base_color: get_base_color_lane(*lane_type),
-                            // XXX TODO: Fill these properly.
-                            z_start_position: 0.0,
-                            z_end_position: 0.0,
+                            z_position: 0.0,
+                            x_position: 0.0,
+                            apply_runner_transform: true,
                         });
                     }
                 }
@@ -279,12 +258,6 @@ impl TrackDescriptionCreator {
 
         let mesh = Mesh { vertices, indices };
         let mesh = mesh.transform(&Matrix4::new_translation(&Vector3::new(0.0, -0.005, 0.0)));
-
-        // println!(
-        //     "Lane notes mesh vert {} indices {}",
-        //     mesh.vertices.len(),
-        //     mesh.indices.len()
-        // );
 
         LanesDescription {
             mesh,
@@ -316,11 +289,12 @@ impl TrackDescriptionCreator {
                     indices.push(index + current_index_offset);
                 }
 
-                objects.push(PlatformInstance {
+                objects.push(ObjectInstance {
                     base_color: get_base_color_hit(note.ty),
-                    // XXX TODO: Fill these properly.
-                    z_start_position: 0.0,
-                    z_end_position: 0.0,
+                    // Zero here because raw vertces are already properly transformed.
+                    z_position: 0.0,
+                    x_position: 0.0,
+                    apply_runner_transform: true,
                 });
 
                 (vertices, indices, objects, objects_indices)
@@ -332,12 +306,6 @@ impl TrackDescriptionCreator {
 
         let mesh = Mesh { vertices, indices };
         let mesh = mesh.transform(&Matrix4::new_translation(&Vector3::new(0.0, -0.005, 0.0)));
-
-        // println!(
-        //     "Hold notes mesh vert {} indices {}",
-        //     mesh.vertices.len(),
-        //     mesh.indices.len()
-        // );
 
         HoldNotesDescription {
             mesh,
@@ -352,25 +320,25 @@ impl TrackDescriptionCreator {
             .notes
             .hits
             .iter()
-            .map(|n| NoteInstance::from_chart_hit(n, true))
+            .map(|n| ObjectInstance::from_chart_hit(n, true))
             .collect();
         let notes_contact = chart
             .notes
             .contacts
             .iter()
-            .map(|n| NoteInstance::from_chart_contact(n, true))
+            .map(|n| ObjectInstance::from_chart_contact(n, true))
             .collect();
         let notes_flick = chart
             .notes
             .flicks
             .iter()
-            .map(|n| NoteInstance::from_chart_flick(n, true))
+            .map(|n| ObjectInstance::from_chart_flick(n, true))
             .collect();
         let notes_evade = chart
             .notes
             .evades
             .iter()
-            .map(|n| EvadeNoteInstance::from_chart_evade(n))
+            .map(|n| EvadeObjectInstance::from_chart_evade(n))
             .collect();
 
         let notes_hit = self.apply_runner_speed(notes_hit);
@@ -396,10 +364,11 @@ impl TrackDescriptionCreator {
 
             platform_mesh,
             // XXX TODO: Properly fill this.
-            platform_instances: vec![PlatformInstance {
-                z_start_position: 0.0,
-                z_end_position: 200.0,
+            platform_instances: vec![ObjectInstance {
+                z_position: 0.0,
+                x_position: 0.0,
                 base_color: Vector4::new(0.0, 0.0, 0.0, 1.0),
+                apply_runner_transform: true,
             }],
 
             hold_notes,

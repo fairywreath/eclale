@@ -26,7 +26,6 @@ use crate::{
 use render_description::{RenderDescription, RenderPipelineDescription, RenderingType};
 
 mod instanced;
-mod line;
 mod mosv;
 
 pub mod render_description;
@@ -79,7 +78,6 @@ impl Renderer {
             .pipelines
             .into_iter()
             .map(|p| {
-                println!("{:#?}", &p);
                 Self::create_graphics_pipeline(
                     &device,
                     descriptor_set_layouts[0].clone(),
@@ -124,11 +122,6 @@ impl Renderer {
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-
-        println!(
-            "Number of instance renderers: {}",
-            instanced_renderers.len()
-        );
 
         let gui_renderer = GuiRenderer::new(
             device.clone(),
@@ -210,16 +203,16 @@ impl Renderer {
                 ),
             };
 
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-            .blend_enable(false)
-            .color_write_mask(vk::ColorComponentFlags::RGBA);
-
         // let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-        //     .blend_enable(true)
-        //     .color_blend_op(vk::BlendOp::ADD)
-        //     .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
-        //     .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+        //     .blend_enable(false)
         //     .color_write_mask(vk::ColorComponentFlags::RGBA);
+
+        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
+            .blend_enable(true)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .color_write_mask(vk::ColorComponentFlags::RGBA);
 
         let rasterization_state = PipelineRasterizationState::new()
             .polygon_mode(vk::PolygonMode::FILL)

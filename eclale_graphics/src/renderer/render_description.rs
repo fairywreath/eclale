@@ -1,6 +1,6 @@
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector3;
 
-use crate::{geometry::line::Line, vulkan::shader::ShaderModuleDescriptor};
+use crate::vulkan::shader::ShaderModuleDescriptor;
 
 #[derive(Clone, Copy, Debug)]
 pub enum RenderingType {
@@ -42,21 +42,10 @@ pub struct MOSVDrawData {
     pub pipeline_index: usize,
 }
 
-// #[derive(Clone)]
-// pub struct LinesDrawData {
-//     pub lines: Vec<Line>,
-//     pub line_data: Vec<u8>,
-//     pub instance_data: Vec<u8>,
-//     pub instance_count: usize,
-//     pub pipeline_index: usize,
-// }
-
 #[derive(Clone)]
 pub struct RenderDescription {
     pub scene_uniform_data_size: u64,
     pub pipelines: Vec<RenderPipelineDescription>,
-
     pub instanced_draw_data: Vec<InstancedDrawData>,
     pub mosv_draw_data: Vec<MOSVDrawData>,
-    // pub lines_draw_data: Vec<LinesDrawData>,
 }

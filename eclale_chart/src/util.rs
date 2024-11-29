@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::fmt;
 
 use crate::Time;
 
@@ -15,9 +15,9 @@ pub(crate) struct MeasureCompositionData {
 }
 
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct ZPosition {
-    pub(crate) time: Time,
-    pub(crate) z: f32,
+pub struct ZPosition {
+    pub time: Time,
+    pub z: f32,
 }
 
 impl ZPosition {
@@ -40,9 +40,19 @@ struct MeasureData {
 }
 
 /// Counts offset at a specific measure and subdivison.
-pub(crate) struct ZPositionCalculator {
+#[derive(Clone)]
+pub struct ZPositionCalculator {
     /// Sorted by positiona; offset.
     measures: Vec<MeasureData>,
+
+    /// Position-based (not time) base velocity on the z axis.
+    z_base_speed: f32,
+}
+
+impl fmt::Debug for ZPositionCalculator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ZPositionCalculator")
+    }
 }
 
 impl ZPositionCalculator {
@@ -89,12 +99,20 @@ impl ZPositionCalculator {
             )
             .collect::<Vec<_>>();
 
-        // println!("{:#?}", &measures);
-
-        Self { measures }
+        Self {
+            measures,
+            z_base_speed,
+        }
     }
 
-    pub(crate) fn z_position_at(&self, measure: usize, subdivision_index: f32) -> ZPosition {
+    pub fn z_position_at(&self, measure: usize, subdivision_index: f32) -> ZPosition {
+        if measure >= self.measures.len() {
+            log::error!(
+                "Measure {} is higher than the number of measure data provided!",
+                measure
+            );
+        }
+
         let subdivision = self.measures[measure].composition.subdivision;
         let position_data = self.measures[measure].position;
 
@@ -107,6 +125,11 @@ impl ZPositionCalculator {
 
         ZPosition::new(time, z)
     }
+
+    /// Position-based (not time) base velocity on the z axis.
+    pub fn z_base_speed(&self) -> f32 {
+        self.z_base_speed
+    }
 }
 
 pub(crate) struct XPositionCalculator {
@@ -118,15 +141,12 @@ impl XPositionCalculator {
         Self { resolution }
     }
 
-    pub(crate) fn x_position_at(&self, abs_position: f32, offset_position: f32) -> f32 {
-        // abs_position + offset_position * self.resolution
-        // abs_position * self.resolution
-
-        // (abs_position + offset_position * self.resolution) / 16.0
-
-        // XXX  FIXME: Properly adjust this based on chart settings.
-        // XXX TODO:
-        abs_position / 25.0 + (offset_position / self.resolution / 25.0)
-        // abs_position / 25.0
+    pub(crate) fn x_position_at(
+        &self,
+        abs_position: f32,
+        offset_position: f32,
+        multiplier: f32,
+    ) -> f32 {
+        (abs_position + (offset_position / self.resolution)) * multiplier
     }
 }

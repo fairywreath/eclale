@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use util::ZPositionCalculator;
+
 pub mod parse;
 mod util;
 
@@ -175,8 +177,14 @@ pub struct Metadata {
 }
 
 #[derive(Clone, Debug)]
+pub struct ChartUtils {
+    pub z_position_calculator: ZPositionCalculator,
+}
+
+#[derive(Clone, Debug)]
 pub struct Chart {
     pub header: Header,
     pub metadata: Metadata,
     pub data: ChartData,
+    pub utils: ChartUtils,
 }

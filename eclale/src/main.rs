@@ -50,21 +50,11 @@ fn main() -> Result<()> {
         chart.data.track.lanes.len()
     );
 
-    // println!("{:#?}", &chart.data.notes.hits);
-
-    let chart_speed = 3.0;
-    // let chart_speed = 0.2;
-    let runner_speed = 20.0;
+    let chart_speed = 1.0;
+    let runner_speed = 15.0;
 
     let render_track_settings = TrackSettings { runner_speed };
     let render_track_description = TrackDescription::from_chart(&chart, render_track_settings);
-
-    // let ecl_parser = EclParser::new()?;
-    // let chart = ecl_parser.parse_file(chart_file_path)?;
-
-    // let chart = OsuManiaParser::parse_file(chart_file_path)?;
-
-    // log::info!("Chart number of hit objects: {}", chart.notes.len());
 
     // Load audio.
     // let mut audio_system = AudioSystem::new()?;
@@ -104,7 +94,7 @@ fn main() -> Result<()> {
     let mut current_runner_position = 0.0;
 
     let eye = Point3::new(0.0, -1.3, -2.5);
-    let target = Point3::new(0.0, 2.0, 4.5);
+    let target = Point3::new(0.0, 2.0, 2.5);
 
     let view = Isometry3::look_at_rh(&eye, &target, &Vector3::y());
     let projection = Perspective3::new(

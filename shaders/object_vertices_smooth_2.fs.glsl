@@ -11,12 +11,14 @@ void main()
 {
 
     // XXX TODO: Make this configurable from outside.
-    float width = 0.05;
-    float aaWidth = 0.035;
+    float width = 0.15;
+    float aaWidth = 0.05;
 
     float alpha = smoothstep(width + aaWidth, width, abs(distanceToCenter));
-    outFragColor = vec4(color.rgb * alpha, 1.0);
 
-    outFragColor = color;
+    // outFragColor = vec4(color.rgb * alpha, 1.0);
+    outFragColor = vec4(color.rgb, alpha);
+
+    // outFragColor = color;
 }
 

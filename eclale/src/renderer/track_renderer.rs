@@ -27,9 +27,7 @@ use eclale_graphics::{
     },
 };
 
-use super::track_description::{
-    EvadeNoteInstance, NoteInstance, PlatformInstance, TrackDescription,
-};
+use super::track_description::{EvadeObjectInstance, ObjectInstance, TrackDescription};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Default)]
@@ -51,7 +49,7 @@ struct ObjectInstanceGpuData {
 }
 
 impl ObjectInstanceGpuData {
-    fn from_note_instance(instance: &NoteInstance) -> Self {
+    fn from_object_instance(instance: &ObjectInstance) -> Self {
         Self {
             transform: Matrix4::new_translation(&Vector3::new(
                 instance.x_position,
@@ -69,11 +67,11 @@ impl ObjectInstanceGpuData {
         }
     }
 
-    fn from_note_instances(instances: &[NoteInstance]) -> Vec<Self> {
-        instances.iter().map(Self::from_note_instance).collect()
+    fn from_object_instances(instances: &[ObjectInstance]) -> Vec<Self> {
+        instances.iter().map(Self::from_object_instance).collect()
     }
 
-    fn from_evade_note_instance(instance: &EvadeNoteInstance) -> Self {
+    fn from_evade_object_instance(instance: &EvadeObjectInstance) -> Self {
         Self {
             // Use initial position.
             transform: Matrix4::new_translation(&Vector3::new(
@@ -87,37 +85,12 @@ impl ObjectInstanceGpuData {
         }
     }
 
-    fn from_evade_note_instances(instances: &[EvadeNoteInstance]) -> Vec<Self> {
+    fn from_evade_object_instances(instances: &[EvadeObjectInstance]) -> Vec<Self> {
         instances
             .iter()
-            .map(Self::from_evade_note_instance)
+            .map(Self::from_evade_object_instance)
             .collect()
     }
-
-    fn from_platform_instance(instance: &PlatformInstance) -> Self {
-        assert!(instance.z_start_position == 0.0);
-        Self {
-            transform: Matrix4::new_translation(&Vector3::new(0.0, 0.0, instance.z_start_position)),
-            base_color: instance.base_color,
-            apply_runner_transform: 1,
-
-            ..Default::default()
-        }
-    }
-
-    fn from_platform_instances(instances: &[PlatformInstance]) -> Vec<Self> {
-        instances.iter().map(Self::from_platform_instance).collect()
-    }
-
-    // fn from_hold_note_instance(instance: &HoldNoteInstance) -> Self {
-    //     Self {
-    //         transform: Matrix4::new_translation(&Vector3::new(0.0, 0.0, instance.z_start_position)),
-    //         base_color: instance.base_color,
-    //         apply_runner_transform: 1,
-    //
-    //         ..Default::default()
-    //     }
-    // }
 
     fn create_bytes(instances: &[Self]) -> Vec<u8> {
         instances
@@ -125,10 +98,14 @@ impl ObjectInstanceGpuData {
             .flat_map(|o| bytemuck::bytes_of(o).to_vec())
             .collect()
     }
+
+    fn cast_slice(instances: &[Self]) -> &[u8] {
+        bytemuck::cast_slice(instances)
+    }
 }
 
 pub(crate) const HIT_Z_LENGTH: f32 = 0.1;
-pub(crate) const HIT_X_LENGTH: f32 = 0.2;
+pub(crate) const HIT_X_LENGTH: f32 = 0.25;
 
 struct RenderMeshes {
     hit: Mesh,
@@ -256,7 +233,6 @@ impl RenderDescriptionCreator {
 
     fn add_pipeline(&mut self, pipeline: RenderPipelineDescription) -> usize {
         self.pipelines.push(pipeline);
-        println!("Returning pipeline index {}", self.pipelines.len() - 1);
         self.pipelines.len() - 1
     }
 
@@ -308,24 +284,24 @@ impl RenderDescriptionCreator {
         let pipeline_index_mosv_lines = self.add_pipeline(RenderPipelines::mosv_lines_smooth());
 
         self.add_objects_instanced_draw_data(
-            &ObjectInstanceGpuData::from_note_instances(&self.description.notes_hit),
+            &ObjectInstanceGpuData::from_object_instances(&self.description.notes_hit),
             self.meshes.hit(),
             pipeline_index_instanced,
         );
         self.add_objects_instanced_draw_data(
-            &ObjectInstanceGpuData::from_note_instances(&self.description.notes_contact),
+            &ObjectInstanceGpuData::from_object_instances(&self.description.notes_contact),
             self.meshes.contact(),
             pipeline_index_instanced,
         );
         self.add_objects_instanced_draw_data(
-            &ObjectInstanceGpuData::from_note_instances(&self.description.notes_flick),
+            &ObjectInstanceGpuData::from_object_instances(&self.description.notes_flick),
             self.meshes.flick(),
             pipeline_index_instanced,
         );
 
         let evade_notes_renderer_index = self.instanced_draw_data.len();
         let evade_notes_object_instances =
-            ObjectInstanceGpuData::from_evade_note_instances(&self.description.notes_evade);
+            ObjectInstanceGpuData::from_evade_object_instances(&self.description.notes_evade);
         self.add_objects_instanced_draw_data(
             &evade_notes_object_instances,
             self.meshes.evade(),
@@ -333,7 +309,7 @@ impl RenderDescriptionCreator {
         );
 
         self.add_objects_instanced_draw_data(
-            &ObjectInstanceGpuData::from_platform_instances(&self.description.platform_instances),
+            &ObjectInstanceGpuData::from_object_instances(&self.description.platform_instances),
             self.description.platform_mesh.clone(),
             pipeline_index_instanced,
         );
@@ -341,14 +317,14 @@ impl RenderDescriptionCreator {
         self.add_mosv_draw_data(
             pipeline_index_mosv_planes,
             self.description.hold_notes.mesh.clone(),
-            &ObjectInstanceGpuData::from_platform_instances(&self.description.hold_notes.objects),
+            &ObjectInstanceGpuData::from_object_instances(&self.description.hold_notes.objects),
             &self.description.hold_notes.objects_indices.clone(),
         );
 
         self.add_mosv_draw_data(
             pipeline_index_mosv_lines,
             self.description.lanes.mesh.clone(),
-            &ObjectInstanceGpuData::from_platform_instances(&self.description.lanes.objects),
+            &ObjectInstanceGpuData::from_object_instances(&self.description.lanes.objects),
             &self.description.lanes.objects_indices.clone(),
         );
 
@@ -378,7 +354,7 @@ struct RenderDescriptionMetadata {
 #[derive(Clone)]
 struct EvadeNotesRendererData {
     gpu_object_instances: Vec<ObjectInstanceGpuData>,
-    evade_notes_instances: Vec<EvadeNoteInstance>,
+    evade_notes_instances: Vec<EvadeObjectInstance>,
     renderer_index: usize,
 }
 
@@ -433,11 +409,9 @@ impl TrackRenderer {
     }
 
     fn update_evade_notes(&mut self, current_time: f32) {
-        // let gpu_data = ObjectInstanceGpuData::from_evade_note_instances(
-        //     &self.evade_notes_data.evade_notes_instances,
-        // );
-
         // XXX TODO: Properly optimize evade note position update, only check and change what is necessary.
+        // XXX TODO: Move this logic outside of renderer to a more general game logic processing
+        // handler.
         for (i, note) in self
             .evade_notes_data
             .evade_notes_instances
@@ -445,15 +419,15 @@ impl TrackRenderer {
             .enumerate()
         {
             let current_position = if current_time < note.trigger_time {
-                // Note has not started yet; return the start position
+                // Note has not started yet; return the start position/
                 note.start_position
             } else if current_time > note.trigger_time + note.duration {
-                // Note has already ended; return the end position
+                // Note has already ended; return the end position/
                 note.end_position
             } else {
-                // Note is active; calculate normalized time `t`
+                // Note is moving; calculate normalized time `t`.
                 let t = (current_time - note.trigger_time) / note.duration;
-                // Interpolate position
+                // Interpolate position.
                 note.start_position + t * (note.end_position - note.start_position)
             };
 
@@ -461,9 +435,11 @@ impl TrackRenderer {
                 Matrix4::new_translation(&Vector3::new(current_position.x, 0.0, current_position.y))
         }
 
-        let gpu_data = bytemuck::cast_slice(&self.evade_notes_data.gpu_object_instances);
+        let gpu_data =
+            ObjectInstanceGpuData::cast_slice(&self.evade_notes_data.gpu_object_instances);
 
         // XXX TODO: remove the unwrap here.
+        // XXX TODO: Do not re-write the whole buffer every frame, use transfer queue, etc.
         self.renderer
             .update_instanced_renderer_instance_gpu_data(
                 self.evade_notes_data.renderer_index,

@@ -40,12 +40,6 @@ fn create_gpu_resources(device: &Arc<Device>, draw_data: &MOSVDrawData) -> Resul
     })?;
     vertex_buffer_positions.write_data(&draw_data.vertices)?;
 
-    log::info!(
-        "MOSV vertices {} indices {}",
-        draw_data.vertices.len(),
-        draw_data.indices.len()
-    );
-
     let vertex_buffer_objects_indices = device.create_buffer(BufferDescriptor {
         size: (draw_data.vertices.len() * size_of::<Vector3<u32>>()) as u64,
         usage_flags: vk::BufferUsageFlags::VERTEX_BUFFER,
